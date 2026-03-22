@@ -1,0 +1,36 @@
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
+
+class ProjectCreate(BaseModel):
+    name: str
+    app_type: str = "auto"
+    description: Optional[str] = None
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    app_type: str
+    description: Optional[str]
+    latest_version_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+class VersionResponse(BaseModel):
+    id: int
+    project_id: int
+    version_no: int
+    status: str
+    prompt_snapshot: str
+    schema_json: Optional[str]
+    code_json: Optional[str]
+    created_at: datetime
