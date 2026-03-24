@@ -1,6 +1,7 @@
-"""
-生成服务：编排 LangGraph 多智能体执行，通过 WebSocket 推送状态。
-"""
+"""Orchestrate generation runs and persist version artifacts."""
+
+from __future__ import annotations
+
 import asyncio
 import json
 from datetime import datetime, timezone
@@ -10,11 +11,12 @@ from sqlmodel import Session, select
 
 from app.agents.orchestrator import compiled_graph
 from app.api.ws import manager
-from app.core.database import get_session
-from app.models import AgentRun, AppVersion, Conversation, Message, Project
+from app.models import AgentRun, AppVersion, Project, ProjectAsset
+from app.services.asset_storage import build_asset_prompt_context, inject_project_assets_into_schema
 from app.services.code_export import build_project_artifact
 from app.services.image_generation import enrich_schema_with_generated_images
 from app.services.preview_repair import repair_preview_payload
+from app.services.quality_guardian import run_quality_guardian
 
 
 def _has_renderable_schema(app_schema: object) -> bool:
@@ -39,20 +41,20 @@ def _get_critical_error(errors: list[str]) -> Optional[str]:
 
 
 async def _make_ws_callback(project_id: int, version_id: int, session_factory):
-    """生成 WebSocket 回调函数，同时更新数据库中的 AgentRun 记录。"""
     async def callback(agent_name: str, status: str, summary: Optional[str]) -> None:
         now = datetime.now(timezone.utc)
 
-        # 推送 WebSocket 消息
-        await manager.broadcast(project_id, {
-            "type": "agent_status",
-            "agent": agent_name,
-            "status": status,
-            "summary": summary,
-            "timestamp": now.isoformat(),
-        })
+        await manager.broadcast(
+            project_id,
+            {
+                "type": "agent_status",
+                "agent": agent_name,
+                "status": status,
+                "summary": summary,
+                "timestamp": now.isoformat(),
+            },
+        )
 
-        # 更新数据库 AgentRun
         try:
             with Session(session_factory) as db:
                 run = db.exec(
@@ -71,19 +73,28 @@ async def _make_ws_callback(project_id: int, version_id: int, session_factory):
                     db.add(run)
                     db.commit()
         except Exception:
-            pass  # 数据库更新失败不阻断主流程
+            pass
 
     return callback
 
 
 async def _init_agent_runs(version_id: int, engine) -> None:
-    """预创建所有 Agent 的 pending 状态记录。"""
     agents = ["product", "design_director", "architect", "ui_builder", "code", "media", "qa"]
     with Session(engine) as db:
         for agent_name in agents:
-            run = AgentRun(version_id=version_id, agent_name=agent_name)
-            db.add(run)
+            db.add(AgentRun(version_id=version_id, agent_name=agent_name))
         db.commit()
+
+
+def _get_project_assets(project_id: int, engine) -> list[ProjectAsset]:
+    with Session(engine) as db:
+        return list(
+            db.exec(
+                select(ProjectAsset)
+                .where(ProjectAsset.project_id == project_id)
+                .order_by(ProjectAsset.created_at.asc())
+            ).all()
+        )
 
 
 async def run_generation(
@@ -93,12 +104,7 @@ async def run_generation(
     app_type: str,
     engine,
 ) -> None:
-    """
-    异步后台任务：运行完整 Agent 链路，生成应用产物。
-    由 asyncio.create_task 调用，不阻塞 HTTP 响应。
-    """
     await _init_agent_runs(version_id, engine)
-
     ws_callback = await _make_ws_callback(project_id, version_id, engine)
 
     try:
@@ -111,18 +117,26 @@ async def run_generation(
     except Exception:
         pass
 
-    # 通知开始
-    await manager.broadcast(project_id, {
-        "type": "generation_status",
-        "status": "running",
-        "version_id": version_id,
-    })
+    await manager.broadcast(
+        project_id,
+        {
+            "type": "generation_status",
+            "status": "running",
+            "version_id": version_id,
+        },
+    )
 
     try:
+        project_assets = _get_project_assets(project_id, engine)
+        generation_prompt = prompt
+        asset_context = build_asset_prompt_context(project_assets)
+        if asset_context:
+            generation_prompt = f"{prompt}\n\n{asset_context}"
+
         initial_state = {
             "project_id": project_id,
             "version_id": version_id,
-            "prompt": prompt,
+            "prompt": generation_prompt,
             "app_type": app_type,
             "prd_json": None,
             "design_brief": None,
@@ -167,31 +181,31 @@ async def run_generation(
         )
         await ws_callback("media", "done", image_result.get("summary"))
 
-        app_schema_payload = dict(repaired_schema)
+        if project_assets:
+            repaired_schema = inject_project_assets_into_schema(repaired_schema, project_assets)
 
-        if preview_fixes:
-            await ws_callback(
-                "qa",
-                "done",
-                f"自动修复 {len(preview_fixes)} 处预览兼容问题",
-            )
+        code_artifact = build_project_artifact(
+            prompt,
+            repaired_schema,
+            repaired_bundle,
+        )
+        app_schema_payload, code_artifact, quality_report = run_quality_guardian(
+            repaired_schema,
+            repaired_bundle,
+            code_artifact,
+            preview_fixes=preview_fixes,
+            image_result=image_result,
+        )
+        await ws_callback("qa", "done", quality_report.get("summary"))
 
-        # 保存产物到数据库
         with Session(engine) as db:
             version = db.get(AppVersion, version_id)
             if version:
-                code_artifact = build_project_artifact(
-                    prompt,
-                    app_schema_payload,
-                    repaired_bundle,
-                )
-
                 version.schema_json = json.dumps(app_schema_payload, ensure_ascii=False)
                 version.code_json = json.dumps(code_artifact, ensure_ascii=False)
                 version.status = "completed"
                 db.add(version)
 
-                # 更新项目 latest_version_id
                 project = db.get(Project, project_id)
                 if project:
                     project.latest_version_id = version_id
@@ -200,14 +214,15 @@ async def run_generation(
 
                 db.commit()
 
-        await manager.broadcast(project_id, {
-            "type": "generation_status",
-            "status": "completed",
-            "version_id": version_id,
-        })
-
-    except Exception as e:
-        # 标记版本失败
+        await manager.broadcast(
+            project_id,
+            {
+                "type": "generation_status",
+                "status": "completed",
+                "version_id": version_id,
+            },
+        )
+    except Exception as exc:
         try:
             with Session(engine) as db:
                 version = db.get(AppVersion, version_id)
@@ -218,12 +233,15 @@ async def run_generation(
         except Exception:
             pass
 
-        await manager.broadcast(project_id, {
-            "type": "generation_status",
-            "status": "failed",
-            "version_id": version_id,
-            "error": str(e),
-        })
+        await manager.broadcast(
+            project_id,
+            {
+                "type": "generation_status",
+                "status": "failed",
+                "version_id": version_id,
+                "error": str(exc),
+            },
+        )
 
 
 async def run_race_lite(
@@ -234,7 +252,6 @@ async def run_race_lite(
     app_type: str,
     engine,
 ) -> None:
-    """Race Lite：并行运行两个生成任务。"""
     await asyncio.gather(
         run_generation(project_id, version_id_a, prompt, app_type, engine),
         run_generation(project_id, version_id_b, prompt, app_type, engine),

@@ -1,5 +1,7 @@
 """Generation endpoints for creating and iterating app versions."""
 
+from __future__ import annotations
+
 from typing import Annotated, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -11,6 +13,7 @@ from app.models import AppVersion, Conversation, Message, Project, User
 from app.schemas.generation import GenerateRequest, IterateRequest
 from app.schemas.project import VersionResponse
 from app.services.generation_service import run_generation, run_race_lite
+from app.services.iteration_context import build_iteration_prompt
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 
@@ -51,13 +54,7 @@ async def generate(
         select(Conversation).where(Conversation.project_id == project_id)
     ).first()
     if conversation:
-        session.add(
-            Message(
-                conversation_id=conversation.id,
-                role="user",
-                content=body.prompt,
-            )
-        )
+        session.add(Message(conversation_id=conversation.id, role="user", content=body.prompt))
 
     app_type = project.app_type or "auto"
 
@@ -136,21 +133,17 @@ async def iterate(
     if not last_version:
         raise HTTPException(status_code=400, detail="No existing version to iterate from")
 
-    context_prompt = body.prompt
-    if last_version.schema_json:
-        context_prompt = f"基于现有应用，修改需求：{body.prompt}"
+    context_prompt = build_iteration_prompt(
+        body.prompt,
+        body.scope,
+        last_version.schema_json,
+    )
 
     conversation = session.exec(
         select(Conversation).where(Conversation.project_id == project_id)
     ).first()
     if conversation:
-        session.add(
-            Message(
-                conversation_id=conversation.id,
-                role="user",
-                content=body.prompt,
-            )
-        )
+        session.add(Message(conversation_id=conversation.id, role="user", content=body.prompt))
 
     new_version = AppVersion(
         project_id=project_id,
@@ -171,7 +164,7 @@ async def iterate(
         project.app_type or "auto",
         engine,
     )
-    return {"version_id": new_version.id}
+    return {"version_id": new_version.id, "scope": body.scope or "full"}
 
 
 @router.get("/{project_id}/versions", response_model=List[VersionResponse])

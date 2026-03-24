@@ -83,6 +83,21 @@ export interface DesignBrief {
   avoid_patterns?: string[];
 }
 
+export interface QualityCheck {
+  id: string;
+  label: string;
+  status: "passed" | "warning" | "fixed";
+  detail: string;
+}
+
+export interface QualityReport {
+  score: number;
+  summary: string;
+  checks: QualityCheck[];
+  applied_repairs?: string[];
+  recommended_prompts?: string[];
+}
+
 export interface AppSchema {
   app_id: string;
   title: string;
@@ -91,6 +106,7 @@ export interface AppSchema {
   navigation?: NavigationItem[];
   data_models?: DataModel[];
   design_brief?: DesignBrief;
+  quality_report?: QualityReport;
   ui_theme?: UITheme;
 }
 
@@ -133,5 +149,6 @@ export interface GeneratedProjectArtifact {
   package_name?: string;
   entry?: string;
   code_bundle: CodeBundle;
+  quality_report?: QualityReport;
   files: GeneratedFile[];
 }

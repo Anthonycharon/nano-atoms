@@ -9,6 +9,7 @@ class GenerateRequest(BaseModel):
 
 class IterateRequest(BaseModel):
     prompt: str
+    scope: Optional[str] = "full"
 
 
 class PublishRequest(BaseModel):

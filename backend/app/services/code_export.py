@@ -240,6 +240,7 @@ def build_project_artifact(
 ) -> dict[str, Any]:
     title = app_schema.get("title") or "Nano Atoms App"
     package_name = _slugify(title)
+    quality_report = app_schema.get("quality_report")
 
     files = [
         {"path": "README.md", "language": "markdown", "content": _build_readme(title, prompt)},
@@ -250,6 +251,14 @@ def build_project_artifact(
         {"path": "data/app-schema.json", "language": "json", "content": _json_text(app_schema)},
         {"path": "data/code-bundle.json", "language": "json", "content": _json_text(code_bundle)},
     ]
+    if isinstance(quality_report, dict):
+        files.append(
+            {
+                "path": "data/quality-report.json",
+                "language": "json",
+                "content": _json_text(quality_report),
+            }
+        )
 
     return {
         "format": "project_files_v1",
@@ -257,6 +266,7 @@ def build_project_artifact(
         "package_name": package_name,
         "entry": "index.html",
         "code_bundle": code_bundle,
+        "quality_report": quality_report,
         "files": [
             {**file, "language": file.get("language") or _infer_language(file["path"])}
             for file in files
