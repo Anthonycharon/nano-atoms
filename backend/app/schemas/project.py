@@ -34,3 +34,14 @@ class VersionResponse(BaseModel):
     schema_json: Optional[str]
     code_json: Optional[str]
     created_at: datetime
+
+
+class ProjectAssetResponse(BaseModel):
+    id: int
+    project_id: int
+    original_name: str
+    public_url: str
+    media_type: str
+    file_size: int
+    kind: str
+    created_at: datetime

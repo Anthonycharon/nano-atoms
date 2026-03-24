@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     OPENAI_IMAGE_MAX_ASSETS: int = 4
 
     FRONTEND_URL: str = "http://localhost:3000"
+    PUBLIC_BACKEND_URL: str = "http://127.0.0.1:8000"
+    UPLOAD_DIR: str = "./uploads"
 
     class Config:
         env_file = ".env"

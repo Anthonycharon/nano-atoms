@@ -1,1 +1,1 @@
-from . import auth, generation, projects, publish, ws
+from . import assets, auth, generation, projects, publish, ws

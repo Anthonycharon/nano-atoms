@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { AppVersion, Project, User } from "@/types/project";
+import type { AppVersion, Project, ProjectAsset, User } from "@/types/project";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -40,11 +40,24 @@ export const projectsApi = {
 
   versions: (id: number) => api.get<AppVersion[]>(`/api/projects/${id}/versions`),
 
+  assets: (id: number) => api.get<ProjectAsset[]>(`/api/projects/${id}/assets`),
+
+  uploadAssets: (id: number, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    return api.post<ProjectAsset[]>(`/api/projects/${id}/assets`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  deleteAsset: (projectId: number, assetId: number) =>
+    api.delete(`/api/projects/${projectId}/assets/${assetId}`),
+
   generate: (id: number, prompt: string, mode: string = "standard") =>
     api.post(`/api/projects/${id}/generate`, { prompt, mode }),
 
-  iterate: (id: number, prompt: string) =>
-    api.post(`/api/projects/${id}/iterate`, { prompt }),
+  iterate: (id: number, prompt: string, scope?: string) =>
+    api.post(`/api/projects/${id}/iterate`, { prompt, scope }),
 
   publish: (id: number, version_id?: number) =>
     api.post<{ slug: string; url: string }>(`/api/projects/${id}/publish`, {

@@ -23,3 +23,14 @@ export interface AppVersion {
   code_json: string | null;
   created_at: string;
 }
+
+export interface ProjectAsset {
+  id: number;
+  project_id: number;
+  original_name: string;
+  public_url: string;
+  media_type: string;
+  file_size: number;
+  kind: "image" | "document" | "data" | "other";
+  created_at: string;
+}

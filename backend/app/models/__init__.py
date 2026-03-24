@@ -6,6 +6,7 @@ from .message import Message
 from .app_version import AppVersion
 from .agent_run import AgentRun
 from .published_app import PublishedApp
+from .project_asset import ProjectAsset
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "AppVersion",
     "AgentRun",
     "PublishedApp",
+    "ProjectAsset",
 ]

@@ -8,6 +8,7 @@ nul
 
 backend/.env
 backend/nano_atoms.db
+backend/uploads/
 
 frontend/.env.local
 frontend/node_modules/
