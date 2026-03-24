@@ -48,6 +48,7 @@ export default function WorkspacePage({ params }: Props) {
 
   const [mounted, setMounted] = useState(false);
   const [versionData, setVersionData] = useState<{
+    projectId: number;
     schema_json: string | null;
     code_json: string | null;
     status: string;
@@ -66,6 +67,10 @@ export default function WorkspacePage({ params }: Props) {
   useEffect(() => {
     setProject(projectId);
   }, [projectId, setProject]);
+
+  useEffect(() => {
+    setVersionData(null);
+  }, [projectId]);
 
   useWebSocket(projectId);
 
@@ -95,7 +100,10 @@ export default function WorkspacePage({ params }: Props) {
   });
 
   useEffect(() => {
-    if (versions.length === 0) return;
+    if (versions.length === 0) {
+      setVersionData(null);
+      return;
+    }
 
     setVersions(versions);
     if (!currentVersionId) {
@@ -104,17 +112,24 @@ export default function WorkspacePage({ params }: Props) {
   }, [versions, project, currentVersionId, setVersions, setCurrentVersion]);
 
   useEffect(() => {
-    if (!currentVersionId) return;
+    if (!currentVersionId) {
+      setVersionData(null);
+      return;
+    }
 
     const currentVersion = versions.find((version) => version.id === currentVersionId);
-    if (!currentVersion) return;
+    if (!currentVersion) {
+      setVersionData(null);
+      return;
+    }
 
     setVersionData((prev) => ({
+      projectId,
       schema_json: currentVersion.schema_json ?? prev?.schema_json ?? null,
       code_json: currentVersion.code_json ?? prev?.code_json ?? null,
       status: currentVersion.status,
     }));
-  }, [versions, currentVersionId]);
+  }, [versions, currentVersionId, projectId]);
 
   useEffect(() => {
     if (!currentVersionId) return;
@@ -122,13 +137,14 @@ export default function WorkspacePage({ params }: Props) {
       .get(currentVersionId)
       .then((response) => {
         setVersionData({
+          projectId,
           schema_json: response.data.schema_json,
           code_json: response.data.code_json,
           status: response.data.status,
         });
       })
       .catch(() => {});
-  }, [currentVersionId]);
+  }, [currentVersionId, projectId]);
 
   useEffect(() => {
     if (!currentVersionId) return;
@@ -202,6 +218,7 @@ export default function WorkspacePage({ params }: Props) {
       if (nextVersionId) {
         setCurrentVersion(nextVersionId);
         setVersionData({
+          projectId,
           schema_json: null,
           code_json: null,
           status: "queued",
@@ -247,12 +264,14 @@ export default function WorkspacePage({ params }: Props) {
     versions.some((version) => version.status === "running" || version.status === "queued");
 
   const panelStatus =
-    versionData?.status ??
+    (versionData?.projectId === projectId ? versionData.status : null) ??
     (generationStatus === "running"
       ? "running"
       : generationStatus === "failed"
         ? "failed"
         : "idle");
+
+  const activeVersionData = versionData?.projectId === projectId ? versionData : null;
 
   if (!mounted || !hasHydrated) {
     return <div className="min-h-screen bg-slate-100" />;
@@ -285,6 +304,7 @@ export default function WorkspacePage({ params }: Props) {
             const version = versions.find((item) => item.id === id);
             if (version) {
               setVersionData({
+                projectId,
                 schema_json: version.schema_json,
                 code_json: version.code_json,
                 status: version.status,
@@ -308,8 +328,8 @@ export default function WorkspacePage({ params }: Props) {
 
           <div className="min-w-0 flex-1">
             <PreviewPanel
-              schemaJson={versionData?.schema_json ?? null}
-              codeJson={versionData?.code_json ?? null}
+              schemaJson={activeVersionData?.schema_json ?? null}
+              codeJson={activeVersionData?.code_json ?? null}
               status={panelStatus}
             />
           </div>
