@@ -1,6 +1,11 @@
+"use client";
+
 import { notFound } from "next/navigation";
+import { useEffect, useState } from "react";
 import AppRenderer from "@/components/renderer/AppRenderer";
+import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import { extractCodeBundle } from "@/lib/codeArtifacts";
+import { useThemeStore } from "@/stores/themeStore";
 import type { AppSchema } from "@/types/schema";
 
 interface Props {
@@ -10,38 +15,120 @@ interface Props {
 async function getPublishedData(slug: string) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   try {
-    const res = await fetch(`${baseUrl}/api/published/${slug}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return res.json();
+    const response = await fetch(`${baseUrl}/api/published/${slug}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return response.json();
   } catch {
     return null;
   }
 }
 
-export default async function PublicAppPage({ params }: Props) {
-  const { slug } = await params;
-  const data = await getPublishedData(slug);
+export default function PublicAppPageClient({ params }: Props) {
+  const [data, setData] = useState<{
+    schema_json: string | null;
+    code_json: string | null;
+  } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const theme = useThemeStore((state) => state.theme);
+  const toggleTheme = useThemeStore((state) => state.toggleTheme);
+  const isCyber = theme === "cyber";
 
-  if (!data || !data.schema_json) {
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      const { slug } = await params;
+      const result = await getPublishedData(slug);
+      if (!active) return;
+
+      if (!result || !result.schema_json) {
+        setLoaded(true);
+        setData(null);
+        return;
+      }
+
+      setData(result);
+      setLoaded(true);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [params]);
+
+  if (loaded && (!data || !data.schema_json)) {
     notFound();
+  }
+
+  if (!loaded || !data?.schema_json) {
+    return (
+      <div
+        className={`flex min-h-screen items-center justify-center ${
+          isCyber
+            ? "bg-[radial-gradient(circle_at_top,#12304f_0%,#07111f_34%,#040814_74%,#02040a_100%)] text-slate-300"
+            : "bg-slate-50 text-slate-500"
+        }`}
+      >
+        加载中...
+      </div>
+    );
   }
 
   const schema: AppSchema = JSON.parse(data.schema_json);
   const codeBundle = extractCodeBundle(data.code_json);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 简单顶栏 */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <div className="w-5 h-5 rounded bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">N</div>
+    <div
+      className={`min-h-screen ${
+        isCyber
+          ? "bg-[radial-gradient(circle_at_top,#12304f_0%,#07111f_34%,#040814_74%,#02040a_100%)]"
+          : "bg-gray-50"
+      }`}
+    >
+      {isCyber && (
+        <>
+          <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(34,211,238,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.05)_1px,transparent_1px)] bg-[size:88px_88px] opacity-25" />
+          <div className="pointer-events-none fixed left-[12%] top-[10%] h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="pointer-events-none fixed right-[8%] top-[18%] h-80 w-80 rounded-full bg-sky-500/8 blur-3xl" />
+        </>
+      )}
+
+      <div
+        className={`sticky top-0 z-20 flex items-center justify-between border-b px-4 py-2.5 backdrop-blur ${
+          isCyber
+            ? "border-cyan-400/12 bg-slate-950/70"
+            : "border-gray-200 bg-white"
+        }`}
+      >
+        <div className={`flex items-center gap-2 text-sm ${isCyber ? "text-slate-300" : "text-gray-500"}`}>
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-bold ${
+              isCyber
+                ? "bg-cyan-400 text-slate-950 shadow-[0_0_16px_rgba(34,211,238,0.24)]"
+                : "bg-indigo-500 text-white"
+            }`}
+          >
+            N
+          </div>
           <span>由 Nano Atoms 生成</span>
         </div>
-        <a href="/" className="text-xs text-indigo-500 hover:underline">创建你的应用 →</a>
+
+        <div className="flex items-center gap-3">
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
+          <a
+            href="/"
+            className={`text-xs hover:underline ${
+              isCyber ? "text-cyan-300" : "text-indigo-500"
+            }`}
+          >
+            创建你的应用 →
+          </a>
+        </div>
       </div>
 
-      {/* 应用内容 */}
-      <AppRenderer schema={schema} codeBundle={codeBundle} />
+      <div className="relative z-10">
+        <AppRenderer schema={schema} codeBundle={codeBundle} />
+      </div>
     </div>
   );
 }

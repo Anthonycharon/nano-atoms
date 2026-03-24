@@ -4,15 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import { projectsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
+import { useThemeStore } from "@/stores/themeStore";
 import { clearStarterIntent, peekStarterIntent } from "@/lib/starter";
 
-function CreateProjectModal({ onClose }: { onClose: () => void }) {
+function CreateProjectModal({
+  onClose,
+  theme,
+}: {
+  onClose: () => void;
+  theme: "classic" | "cyber";
+}) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const router = useRouter();
+  const isCyber = theme === "cyber";
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -20,64 +29,94 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
         name: name.trim(),
         description: description.trim() || undefined,
       }),
-    onSuccess: (res) => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       onClose();
-      router.push(`/workspace/${res.data.id}`);
+      router.push(`/workspace/${response.data.id}`);
     },
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
-        <h2 className="mb-2 text-lg font-semibold text-slate-900">新建项目</h2>
-        <p className="mb-5 text-sm text-slate-500">
-          先创建项目，再在工作区里继续用一句话发起生成。
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm">
+      <div
+        className={`w-full max-w-md rounded-3xl border p-6 shadow-[0_24px_60px_rgba(15,23,42,0.16)] ${
+          isCyber
+            ? "border-cyan-400/15 bg-slate-950/88"
+            : "border-slate-200 bg-white"
+        }`}
+      >
+        <h2 className={`mb-2 text-lg font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
+          新建项目
+        </h2>
+        <p className={`mb-5 text-sm ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+          先创建项目，再在工作区里用一句话发起生成。
         </p>
 
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
+          onSubmit={(event) => {
+            event.preventDefault();
             mutation.mutate();
           }}
           className="flex flex-col gap-4"
         >
           <div>
-            <label className="mb-1 block text-sm text-slate-600">项目名称</label>
+            <label className={`mb-1 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>
+              项目名称
+            </label>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-500"
+              onChange={(event) => setName(event.target.value)}
+              className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors ${
+                isCyber
+                  ? "border-cyan-400/15 bg-slate-900/80 text-slate-100 placeholder:text-slate-500 focus:border-cyan-300/50"
+                  : "border-slate-300 bg-white text-slate-900 focus:border-indigo-500"
+              }`}
               placeholder="例如：销售线索助手"
               required
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-slate-600">需求描述（可选）</label>
+            <label className={`mb-1 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>
+              需求描述（可选）
+            </label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(event) => setDescription(event.target.value)}
               rows={3}
-              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-500"
+              className={`w-full resize-none rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors ${
+                isCyber
+                  ? "border-cyan-400/15 bg-slate-900/80 text-slate-100 placeholder:text-slate-500 focus:border-cyan-300/50"
+                  : "border-slate-300 bg-white text-slate-900 focus:border-indigo-500"
+              }`}
               placeholder="例如：帮我生成一个可录入客户信息并跟踪跟进状态的应用"
             />
           </div>
 
-          {mutation.isError && <p className="text-xs text-red-600">创建失败，请重试</p>}
+          {mutation.isError && (
+            <p className={`text-xs ${isCyber ? "text-rose-300" : "text-red-600"}`}>创建失败，请重试</p>
+          )}
 
           <div className="mt-1 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-slate-300 py-2.5 text-sm text-slate-600 transition-colors hover:border-slate-400"
+              className={`flex-1 rounded-xl border py-2.5 text-sm transition-colors ${
+                isCyber
+                  ? "border-cyan-400/15 text-slate-300 hover:border-cyan-300/40 hover:text-white"
+                  : "border-slate-300 text-slate-600 hover:border-slate-400"
+              }`}
             >
               取消
             </button>
             <button
               type="submit"
               disabled={mutation.isPending || !name.trim()}
-              className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+              className={`flex-1 rounded-xl py-2.5 text-sm font-medium transition-all disabled:opacity-50 ${
+                isCyber
+                  ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.2)] hover:bg-cyan-300"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700"
+              }`}
             >
               {mutation.isPending ? "创建中..." : "创建并进入"}
             </button>
@@ -92,12 +131,15 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthenticated, user, logout, hasHydrated } = useAuthStore();
+  const theme = useThemeStore((state) => state.theme);
+  const toggleTheme = useThemeStore((state) => state.toggleTheme);
   const [showCreate, setShowCreate] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [starterLaunching, setStarterLaunching] = useState(false);
   const [starterLabel, setStarterLabel] = useState("");
   const [starterError, setStarterError] = useState("");
   const starterLockRef = useRef(false);
+  const isCyber = theme === "cyber";
 
   useEffect(() => {
     setMounted(true);
@@ -122,11 +164,11 @@ export default function DashboardPage() {
 
     void (async () => {
       try {
-        const createRes = await projectsApi.create({
+        const createResponse = await projectsApi.create({
           name: starterIntent.title,
           description: starterIntent.description || starterIntent.prompt,
         });
-        const projectId = createRes.data.id;
+        const projectId = createResponse.data.id;
 
         clearStarterIntent();
         queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -147,7 +189,7 @@ export default function DashboardPage() {
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ["projects"],
-    queryFn: () => projectsApi.list().then((r) => r.data),
+    queryFn: () => projectsApi.list().then((response) => response.data),
     enabled: hasHydrated && isAuthenticated,
   });
 
@@ -157,11 +199,29 @@ export default function DashboardPage() {
 
   if (starterLaunching) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#edf4ff_0%,#f8fafc_42%,#f8fafc_100%)] px-6">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
-          <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" />
-          <h1 className="text-2xl font-semibold text-slate-900">正在一键开始</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-500">
+      <div
+        className={`flex min-h-screen items-center justify-center px-6 ${
+          isCyber
+            ? "bg-[radial-gradient(circle_at_top,#12304f_0%,#07111f_34%,#040814_74%,#02040a_100%)]"
+            : "bg-[radial-gradient(circle_at_top,#edf4ff_0%,#f8fafc_42%,#f8fafc_100%)]"
+        }`}
+      >
+        <div
+          className={`w-full max-w-lg rounded-3xl border p-8 text-center shadow-[0_24px_60px_rgba(15,23,42,0.12)] ${
+            isCyber
+              ? "border-cyan-400/15 bg-slate-950/80"
+              : "border-slate-200 bg-white"
+          }`}
+        >
+          <div
+            className={`mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-4 ${
+              isCyber ? "border-cyan-400/15 border-t-cyan-300" : "border-indigo-100 border-t-indigo-600"
+            }`}
+          />
+          <h1 className={`text-2xl font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
+            正在一键开始
+          </h1>
+          <p className={`mt-3 text-sm leading-6 ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
             正在为你创建项目并发起生成：{starterLabel || "快速开始项目"}
           </p>
         </div>
@@ -170,22 +230,50 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#edf4ff_0%,#f8fafc_42%,#f8fafc_100%)]">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur">
+    <div
+      className={`min-h-screen ${
+        isCyber
+          ? "bg-[radial-gradient(circle_at_top,#12304f_0%,#07111f_34%,#040814_74%,#02040a_100%)]"
+          : "bg-[radial-gradient(circle_at_top,#edf4ff_0%,#f8fafc_42%,#f8fafc_100%)]"
+      }`}
+    >
+      <header
+        className={`flex items-center justify-between border-b px-6 py-4 backdrop-blur ${
+          isCyber
+            ? "border-cyan-400/12 bg-slate-950/60"
+            : "border-slate-200 bg-white/80"
+        }`}
+      >
         <Link href="/" className="group flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-sm transition-transform group-hover:-translate-y-0.5">
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shadow-sm transition-transform group-hover:-translate-y-0.5 ${
+              isCyber
+                ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.24)]"
+                : "bg-indigo-600 text-white"
+            }`}
+          >
             N
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-slate-900">Nano Atoms</span>
-            <span className="text-xs text-slate-400 group-hover:text-slate-500">返回首页</span>
+            <span className={`font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
+              Nano Atoms
+            </span>
+            <span className={`text-xs ${isCyber ? "text-slate-500" : "text-slate-400"}`}>
+              返回首页
+            </span>
           </div>
         </Link>
+
         <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">{user?.email}</span>
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
+          <span className={`hidden text-sm sm:block ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+            {user?.email}
+          </span>
           <button
             onClick={() => logout()}
-            className="text-sm text-slate-600 transition-colors hover:text-slate-900"
+            className={`text-sm transition-colors ${
+              isCyber ? "text-slate-300 hover:text-white" : "text-slate-600 hover:text-slate-900"
+            }`}
           >
             退出
           </button>
@@ -193,34 +281,62 @@ export default function DashboardPage() {
       </header>
 
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">我的项目</h1>
-            <p className="mt-1 text-sm text-slate-500">从一句话需求开始生成应用与代码。</p>
+            <h1 className={`text-3xl font-bold ${isCyber ? "text-white" : "text-slate-900"}`}>
+              我的项目
+            </h1>
+            <p className={`mt-1 text-sm ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+              从一句话需求开始生成应用与代码。
+            </p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700"
+            className={`rounded-xl px-5 py-2.5 text-sm font-medium transition-all ${
+              isCyber
+                ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] hover:bg-cyan-300"
+                : "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700"
+            }`}
           >
             + 新建项目
           </button>
         </div>
 
         {starterError && (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <div
+            className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
+              isCyber
+                ? "border-amber-400/20 bg-amber-400/10 text-amber-200"
+                : "border-amber-200 bg-amber-50 text-amber-700"
+            }`}
+          >
             {starterError}
           </div>
         )}
 
         {isLoading ? (
-          <div className="py-20 text-center text-slate-500">加载中...</div>
+          <div className={`py-20 text-center ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+            加载中...
+          </div>
         ) : projects?.length === 0 ? (
-          <div className="rounded-3xl border border-slate-200 bg-white py-24 text-center shadow-sm">
+          <div
+            className={`rounded-3xl border py-24 text-center ${
+              isCyber
+                ? "border-cyan-400/12 bg-slate-950/70 shadow-[0_18px_50px_rgba(2,8,23,0.4)]"
+                : "border-slate-200 bg-white shadow-sm"
+            }`}
+          >
             <div className="mb-4 mt-6 text-5xl">[]</div>
-            <p className="mb-6 text-slate-600">还没有项目，先创建一个开始生成。</p>
+            <p className={`mb-6 ${isCyber ? "text-slate-400" : "text-slate-600"}`}>
+              还没有项目，先创建一个开始生成。
+            </p>
             <button
               onClick={() => setShowCreate(true)}
-              className="mb-8 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+              className={`mb-8 rounded-xl px-6 py-3 text-sm font-medium transition-all ${
+                isCyber
+                  ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] hover:bg-cyan-300"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700"
+              }`}
             >
               创建第一个项目
             </button>
@@ -231,36 +347,70 @@ export default function DashboardPage() {
               <Link
                 key={project.id}
                 href={`/workspace/${project.id}`}
-                className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300"
+                className={`group rounded-3xl border p-5 transition-all hover:-translate-y-0.5 ${
+                  isCyber
+                    ? "border-cyan-400/12 bg-slate-950/70 shadow-[0_18px_50px_rgba(2,8,23,0.4)] hover:border-cyan-300/35"
+                    : "border-slate-200 bg-white shadow-sm hover:border-indigo-300"
+                }`}
               >
                 <div className="mb-4 flex items-start justify-between">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-sm font-semibold text-indigo-700">
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold ${
+                      isCyber
+                        ? "border border-cyan-400/15 bg-cyan-400/10 text-cyan-200"
+                        : "bg-indigo-50 text-indigo-700"
+                    }`}
+                  >
                     {project.name.trim().slice(0, 1).toUpperCase() || "N"}
                   </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs ${
+                      isCyber
+                        ? "bg-slate-900 text-slate-400"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
                     项目
                   </span>
                 </div>
 
-                <h3 className="mb-2 font-semibold text-slate-900 transition-colors group-hover:text-indigo-700">
+                <h3
+                  className={`mb-2 font-semibold transition-colors ${
+                    isCyber
+                      ? "text-white group-hover:text-cyan-200"
+                      : "text-slate-900 group-hover:text-indigo-700"
+                  }`}
+                >
                   {project.name}
                 </h3>
 
-                <p className="mb-4 min-h-[60px] line-clamp-3 text-sm leading-6 text-slate-500">
+                <p
+                  className={`mb-4 min-h-[60px] line-clamp-3 text-sm leading-6 ${
+                    isCyber ? "text-slate-400" : "text-slate-500"
+                  }`}
+                >
                   {project.description || "进入工作区后，用一句话描述需求，平台会自动判断应用形态。"}
                 </p>
 
-                <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+                <div
+                  className={`flex items-center justify-between border-t pt-4 ${
+                    isCyber ? "border-cyan-400/10" : "border-slate-100"
+                  }`}
+                >
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs ${
                       project.latest_version_id
-                        ? "bg-emerald-50 text-emerald-600"
-                        : "bg-slate-100 text-slate-500"
+                        ? isCyber
+                          ? "bg-emerald-400/10 text-emerald-300"
+                          : "bg-emerald-50 text-emerald-600"
+                        : isCyber
+                          ? "bg-slate-900 text-slate-400"
+                          : "bg-slate-100 text-slate-500"
                     }`}
                   >
                     {project.latest_version_id ? "已生成" : "未生成"}
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className={`text-xs ${isCyber ? "text-slate-500" : "text-slate-400"}`}>
                     {new Date(project.updated_at).toLocaleDateString("zh-CN")}
                   </span>
                 </div>
@@ -270,7 +420,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
+      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} theme={theme} />}
     </div>
   );
 }

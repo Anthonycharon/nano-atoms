@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { parseCodeArtifact } from "@/lib/codeArtifacts";
+import { useThemeStore } from "@/stores/themeStore";
 import type { GeneratedFile } from "@/types/schema";
 
 interface Props {
@@ -60,11 +61,13 @@ function TreeView({
   selectedPath,
   onSelect,
   depth = 0,
+  isCyber,
 }: {
   nodes: TreeNode[];
   selectedPath: string;
   onSelect: (path: string) => void;
   depth?: number;
+  isCyber: boolean;
 }) {
   return (
     <div className="space-y-1">
@@ -72,7 +75,9 @@ function TreeView({
         <div key={node.path}>
           {node.kind === "dir" ? (
             <div
-              className="py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-500"
+              className={`py-1 text-xs font-medium uppercase tracking-[0.12em] ${
+                isCyber ? "text-slate-500" : "text-slate-500"
+              }`}
               style={{ paddingLeft: `${depth * 12}px` }}
             >
               {node.name}
@@ -82,8 +87,12 @@ function TreeView({
               onClick={() => onSelect(node.path)}
               className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                 selectedPath === node.path
-                  ? "border border-indigo-100 bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-100"
+                  ? isCyber
+                    ? "border border-cyan-400/15 bg-cyan-400/10 text-cyan-200"
+                    : "border border-indigo-100 bg-indigo-50 text-indigo-700"
+                  : isCyber
+                    ? "text-slate-300 hover:bg-slate-900"
+                    : "text-slate-600 hover:bg-slate-100"
               }`}
               style={{ marginLeft: `${depth * 12}px`, width: `calc(100% - ${depth * 12}px)` }}
             >
@@ -102,6 +111,7 @@ function TreeView({
               selectedPath={selectedPath}
               onSelect={onSelect}
               depth={depth + 1}
+              isCyber={isCyber}
             />
           )}
         </div>
@@ -111,9 +121,11 @@ function TreeView({
 }
 
 export default function CodePanel({ schemaJson, codeJson, status }: Props) {
+  const theme = useThemeStore((state) => state.theme);
   const artifact = parseCodeArtifact(codeJson, schemaJson);
   const files = artifact?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string>(files[0]?.path ?? "");
+  const isCyber = theme === "cyber";
 
   useEffect(() => {
     if (!files.length) {
@@ -130,8 +142,12 @@ export default function CodePanel({ schemaJson, codeJson, status }: Props) {
 
   if ((status === "queued" || status === "running") && files.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 text-slate-500">
-        <div className="mb-4 h-12 w-12 rounded-full border-2 border-indigo-200 border-t-indigo-500 animate-spin" />
+      <div className={`flex flex-1 flex-col items-center justify-center ${isCyber ? "bg-slate-950/55 text-slate-400" : "bg-slate-50 text-slate-500"}`}>
+        <div
+          className={`mb-4 h-12 w-12 animate-spin rounded-full border-2 ${
+            isCyber ? "border-cyan-400/15 border-t-cyan-300" : "border-indigo-200 border-t-indigo-500"
+          }`}
+        />
         <p className="text-sm">代码文件整理中，请稍候...</p>
       </div>
     );
@@ -139,7 +155,7 @@ export default function CodePanel({ schemaJson, codeJson, status }: Props) {
 
   if (!files.length) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 text-slate-500">
+      <div className={`flex flex-1 flex-col items-center justify-center ${isCyber ? "bg-slate-950/55 text-slate-500" : "bg-slate-50 text-slate-500"}`}>
         <div className="mb-3 text-4xl">{"</>"}</div>
         <p className="text-sm">生成完成后，这里会展示项目文件树</p>
       </div>
@@ -147,36 +163,53 @@ export default function CodePanel({ schemaJson, codeJson, status }: Props) {
   }
 
   return (
-    <div className="min-h-0 flex-1 bg-slate-50 p-5">
+    <div className={`min-h-0 flex-1 p-5 ${isCyber ? "bg-slate-950/55" : "bg-slate-50"}`}>
       <div className="grid h-full grid-cols-[280px_minmax(0,1fr)] gap-4">
-        <aside className="overflow-auto rounded-2xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <div className="text-sm font-semibold text-slate-800">项目文件</div>
-            <div className="mt-1 text-xs text-slate-500">
+        <aside
+          className={`overflow-auto rounded-2xl border ${
+            isCyber ? "border-cyan-400/12 bg-slate-950/85" : "border-slate-200 bg-white"
+          }`}
+        >
+          <div className={`border-b px-4 py-3 ${isCyber ? "border-cyan-400/12" : "border-slate-200"}`}>
+            <div className={`text-sm font-semibold ${isCyber ? "text-slate-100" : "text-slate-800"}`}>
+              项目文件
+            </div>
+            <div className={`mt-1 text-xs ${isCyber ? "text-slate-500" : "text-slate-500"}`}>
               {files.length} 个文件{artifact?.entry ? ` · 入口 ${artifact.entry}` : ""}
             </div>
           </div>
           <div className="p-3">
-            <TreeView nodes={tree} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <TreeView
+              nodes={tree}
+              selectedPath={selectedPath}
+              onSelect={setSelectedPath}
+              isCyber={isCyber}
+            />
           </div>
         </aside>
 
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <section
+          className={`min-w-0 overflow-hidden rounded-2xl border ${
+            isCyber ? "border-cyan-400/12 bg-slate-950/85" : "border-slate-200 bg-white"
+          }`}
+        >
+          <div className={`flex items-center justify-between border-b px-4 py-3 ${isCyber ? "border-cyan-400/12" : "border-slate-200"}`}>
             <div>
-              <div className="text-sm font-semibold text-slate-800">
+              <div className={`text-sm font-semibold ${isCyber ? "text-slate-100" : "text-slate-800"}`}>
                 {selectedFile?.path ?? "未选择文件"}
               </div>
-              <div className="mt-1 text-xs text-slate-500">
+              <div className={`mt-1 text-xs ${isCyber ? "text-slate-500" : "text-slate-500"}`}>
                 {selectedFile?.language ?? "text"}
               </div>
             </div>
             {artifact?.title && (
-              <div className="text-xs text-slate-500">导出项目：{artifact.title}</div>
+              <div className={`text-xs ${isCyber ? "text-slate-500" : "text-slate-500"}`}>
+                导出项目：{artifact.title}
+              </div>
             )}
           </div>
 
-          <div className="h-[calc(100%-65px)] overflow-auto bg-slate-950">
+          <div className={`h-[calc(100%-65px)] overflow-auto ${isCyber ? "bg-[#020617]" : "bg-slate-950"}`}>
             <pre className="min-w-max whitespace-pre p-4 text-[13px] leading-6 text-slate-100">
               {selectedFile?.content ?? ""}
             </pre>
