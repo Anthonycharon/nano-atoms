@@ -10,6 +10,30 @@ interface Props {
   codeBundle: CodeBundle | null;
 }
 
+function getCanvasClass(mode?: string) {
+  switch (mode) {
+    case "contrast":
+      return "bg-[radial-gradient(circle_at_top,#e0ecff_0%,#f8fafc_24%,#eef2ff_100%)]";
+    case "editorial":
+      return "bg-[linear-gradient(180deg,#fffaf2_0%,#f7efe5_24%,#fffdf8_100%)]";
+    case "spotlight":
+      return "bg-[radial-gradient(circle_at_top_right,#dbeafe_0%,#f8fafc_34%,#eff6ff_100%)]";
+    default:
+      return "bg-[radial-gradient(circle_at_top,#eef4ff_0%,#f8fafc_34%,#ffffff_100%)]";
+  }
+}
+
+function getDensityClass(density?: string) {
+  switch (density) {
+    case "compact":
+      return "space-y-4 md:space-y-5";
+    case "airy":
+      return "space-y-8 md:space-y-10";
+    default:
+      return "space-y-6 md:space-y-8";
+  }
+}
+
 export default function AppRenderer({ schema, codeBundle }: Props) {
   const pages = Array.isArray(schema.pages) ? schema.pages : [];
   const [currentRoute, setCurrentRoute] = useState(pages[0]?.route ?? "/");
@@ -69,20 +93,28 @@ export default function AppRenderer({ schema, codeBundle }: Props) {
   const components = Array.isArray(currentPage.components) ? currentPage.components : [];
   const primaryColor = schema.ui_theme?.primary_color ?? "#6366f1";
   const fontFamily = schema.ui_theme?.font_family ?? "inherit";
+  const canvasMode = schema.ui_theme?.canvas_mode ?? "soft";
+  const density = schema.ui_theme?.density ?? "balanced";
+  const textColor = schema.ui_theme?.text_color ?? "#111827";
+  const backgroundColor = schema.ui_theme?.background_color ?? "#ffffff";
+  const shellClass = getCanvasClass(canvasMode);
+  const stackClass = getDensityClass(density);
 
   return (
     <div
-      className="min-h-full"
+      className={`min-h-full ${shellClass}`}
       style={
         {
           fontFamily,
           "--color-primary": primaryColor,
-          backgroundColor: schema.ui_theme?.background_color ?? "#ffffff",
-          color: schema.ui_theme?.text_color ?? "#111827",
+          backgroundColor,
+          color: textColor,
         } as CSSProperties
       }
     >
-      <div>{components.map((node) => renderComponent(node, ctx, codeBundle, theme))}</div>
+      <div className={`pb-20 ${stackClass}`}>
+        {components.map((node) => renderComponent(node, ctx, codeBundle, theme))}
+      </div>
 
       {Object.entries(submitResults).map(([formId, ok]) =>
         ok ? (

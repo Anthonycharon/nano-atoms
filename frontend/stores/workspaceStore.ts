@@ -4,7 +4,7 @@ import type { AppVersion } from "@/types/project";
 import { AGENT_META } from "@/types/agent";
 
 const INITIAL_AGENTS: AgentState[] = (
-  ["product", "architect", "ui_builder", "code", "media", "qa"] as AgentName[]
+  ["product", "design_director", "architect", "ui_builder", "code", "media", "qa"] as AgentName[]
 ).map((name) => ({
   name,
   label: AGENT_META[name].label,

@@ -7,14 +7,14 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from .utils import build_app_context, extract_json, make_llm, notify_agent
 
 
-SYSTEM_PROMPT = """You are a senior application architect.
+SYSTEM_PROMPT = """You are a senior application architect focused on first-pass quality.
 Return a single JSON object only, with no markdown or commentary.
 
 Schema format:
 {
   "app_id": "unique_app_id",
   "title": "Application title",
-  "app_type": "application shape, such as dashboard, tool, admin, internal, landing, marketing, blog, ecommerce",
+  "app_type": "application shape such as dashboard, tool, admin, internal, landing, marketing, blog, ecommerce, auth",
   "pages": [
     {
       "id": "page_id",
@@ -36,15 +36,29 @@ Schema format:
   "data_models": [{"name": "ModelName", "fields": ["field names"]}]
 }
 
-Supported component types: text, heading, image, button, input, select, table, card, form, modal, tag, navbar, stat-card
+Supported component types:
+- Primitive: text, heading, image, button, input, select, table, card, form, modal, tag, navbar, stat-card
+- Composite quality blocks: hero, feature-grid, stats-band, split-section, cta-band, auth-card
+
+Composite block expectations:
+- hero: title, description, eyebrow, primary_cta_label, primary_cta_route, secondary_cta_label, secondary_cta_route, image_src, image_alt, stats
+- feature-grid: title, description, columns, items[{title, description, badge, icon}]
+- stats-band: items[{label, value, caption}]
+- split-section: eyebrow, title, description, bullets, image_src, image_alt, primary_cta_label, primary_cta_route, secondary_cta_label, secondary_cta_route, reverse
+- cta-band: title, description, primary_cta_label, primary_cta_route, secondary_cta_label, secondary_cta_route
+- auth-card: title, description, aside_title, aside_text, image_src, image_alt, footer_text, footer_link_label, footer_link_route; it may contain form/input/button children
+
 Supported action types: navigate, submit_form, open_modal, close_modal, set_value
 
 Requirements:
 - Infer app_type from the requirement. Do not force it into a fixed shortlist.
 - Output a complete schema that can be rendered directly.
-- When the request implies a visual or promotional experience, include image components for hero sections, covers, product cards, galleries, or featured content.
-- For dashboards and internal tools, only include image components when they clearly add value.
-- Prefer realistic page structures over placeholder-heavy layouts."""
+- Use composite quality blocks when they improve clarity and polish.
+- Prefer fewer, stronger sections over many weak placeholder sections.
+- For landing, showcase, campaign, content, and auth flows, avoid flat card stacks as the main structure.
+- For dashboards and internal tools, use clear hierarchy, summary bands, filters, and focused content groupings.
+- Include image-driven sections only when they add real value.
+- All copy should feel specific, product-like, and ready for a believable first preview."""
 
 
 async def run_architect_agent(state: dict) -> dict:
@@ -58,11 +72,16 @@ async def run_architect_agent(state: dict) -> dict:
             raise ValueError("Architect Agent requires a valid PRD payload")
 
         app_context = build_app_context(state.get("app_type"))
+        design_brief = state.get("design_brief")
         response = await llm.ainvoke(
             [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(
-                    content=f"{app_context}\nPRD JSON:\n{json.dumps(prd_json, ensure_ascii=False)}"
+                    content=(
+                        f"{app_context}\n"
+                        f"PRD JSON:\n{json.dumps(prd_json, ensure_ascii=False)}\n\n"
+                        f"Design brief:\n{json.dumps(design_brief or {}, ensure_ascii=False)}"
+                    )
                 ),
             ]
         )

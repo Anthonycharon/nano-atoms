@@ -11,7 +11,13 @@ export type ComponentType =
   | "modal"
   | "tag"
   | "navbar"
-  | "stat-card";
+  | "stat-card"
+  | "hero"
+  | "feature-grid"
+  | "stats-band"
+  | "split-section"
+  | "cta-band"
+  | "auth-card";
 
 export interface ActionDef {
   trigger: "click" | "submit" | "change";
@@ -58,7 +64,23 @@ export interface UITheme {
   font_family: string;
   border_radius: string;
   spacing_unit: number;
+  canvas_mode?: "soft" | "contrast" | "editorial" | "spotlight";
+  surface_mode?: "flat" | "layered" | "glass";
+  density?: "airy" | "balanced" | "compact";
+  accent_style?: "solid" | "gradient";
+  shadow_strength?: "soft" | "medium" | "strong";
   component_styles?: Record<string, { className?: string }>;
+}
+
+export interface DesignBrief {
+  experience_goal?: string;
+  primary_user_mindset?: string;
+  visual_direction?: string;
+  layout_density?: "airy" | "balanced" | "compact";
+  tone_keywords?: string[];
+  section_recommendations?: string[];
+  quality_checklist?: string[];
+  avoid_patterns?: string[];
 }
 
 export interface AppSchema {
@@ -68,6 +90,7 @@ export interface AppSchema {
   pages: Page[];
   navigation?: NavigationItem[];
   data_models?: DataModel[];
+  design_brief?: DesignBrief;
   ui_theme?: UITheme;
 }
 

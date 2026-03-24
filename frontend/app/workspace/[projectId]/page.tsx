@@ -128,7 +128,7 @@ export default function WorkspacePage({ params }: Props) {
         }
         addMessage(
           "assistant",
-          "已进入自动生成流程，正在依次执行 Product、Architect、UI、Code、Media、QA 六个步骤。"
+          "已进入自动生成流程，正在依次执行 Product、Design Director、Architect、UI、Code、Media、QA 七个步骤。"
         );
       }
       return;
@@ -162,7 +162,7 @@ export default function WorkspacePage({ params }: Props) {
     addMessage("user", prompt);
     addMessage(
       "assistant",
-      "已收到需求，正在依次执行 Product、Architect、UI、Code、Media、QA 六个步骤。"
+      "已收到需求，正在依次执行 Product、Design Director、Architect、UI、Code、Media、QA 七个步骤。"
     );
     resetAgents();
     setGenerationStatus("running");

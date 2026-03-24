@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -115,7 +116,7 @@ async def enrich_schema_with_generated_images(
                     prompt=prompt,
                     size=size,
                 )
-                target["component"]["props"]["src"] = src
+                target["component"]["props"][target["prop_key"]] = src
                 generated += 1
             except Exception as exc:
                 errors.append(f"{target['component']['id']}: {exc}")
@@ -352,6 +353,21 @@ def _strip_unresolved_images(app_schema: dict[str, Any]) -> int:
                 removed += 1
                 continue
 
+            if isinstance(props, dict):
+                image_prop = _get_image_prop_key(node)
+                if image_prop and _needs_generated_image(props.get(image_prop)):
+                    if node.get("type") == "image":
+                        removed += 1
+                        continue
+                    label = str(
+                        props.get("image_alt")
+                        or props.get("alt")
+                        or props.get("title")
+                        or node.get("id")
+                        or "Preview image"
+                    )
+                    props[image_prop] = _build_visual_placeholder(label)
+
             kept.append(node)
         return kept
 
@@ -410,12 +426,16 @@ def _collect_image_targets(app_schema: dict[str, Any]) -> list[dict[str, Any]]:
 
     def walk(node: dict[str, Any], page_name: str) -> None:
         props = node.get("props", {})
-        if (
-            node.get("type") == "image"
-            and isinstance(props, dict)
-            and _needs_generated_image(props.get("src"))
-        ):
-            targets.append({"page_name": page_name, "component": node})
+        if isinstance(props, dict):
+            image_prop = _get_image_prop_key(node)
+            if image_prop and _needs_generated_image(props.get(image_prop)):
+                targets.append(
+                    {
+                        "page_name": page_name,
+                        "component": node,
+                        "prop_key": image_prop,
+                    }
+                )
 
         for child in node.get("children", []) or []:
             if isinstance(child, dict):
@@ -448,14 +468,46 @@ def _needs_generated_image(src: Any) -> bool:
     return False
 
 
+def _build_visual_placeholder(label: str) -> str:
+    safe_label = (label or "Preview image").strip() or "Preview image"
+    svg = f"""
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0EAFF"/>
+      <stop offset="1" stop-color="#F8FBFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" rx="40" fill="url(#bg)"/>
+  <rect x="120" y="120" width="960" height="480" rx="28" fill="#FFFFFF" stroke="#C7D8F7" stroke-width="4"/>
+  <circle cx="330" cy="300" r="72" fill="#CFE0FF"/>
+  <path d="M210 520L410 360L560 470L710 320L990 520H210Z" fill="#DCE8FF"/>
+  <text x="600" y="592" text-anchor="middle" fill="#2D4C7C" font-size="36" font-family="Arial, sans-serif">{safe_label}</text>
+</svg>
+""".strip()
+    return f"data:image/svg+xml;charset=UTF-8,{quote(svg)}"
+
+
+def _get_image_prop_key(component: dict[str, Any]) -> str | None:
+    component_type = component.get("type")
+    if component_type == "image":
+        return "src"
+    if component_type in {"hero", "split-section", "auth-card"}:
+        return "image_src"
+    return None
+
+
 def _pick_image_size(component: dict[str, Any]) -> str:
+    props = component.get("props", {})
     signal = " ".join(
         str(value)
         for value in (
             component.get("id"),
-            component.get("props", {}).get("alt"),
-            component.get("props", {}).get("label"),
-            component.get("props", {}).get("title"),
+            props.get("alt"),
+            props.get("image_alt"),
+            props.get("label"),
+            props.get("title"),
+            component.get("type"),
         )
         if value
     ).lower()
@@ -476,6 +528,7 @@ def _build_image_prompt(
     props = component.get("props", {})
     label = str(
         props.get("alt")
+        or props.get("image_alt")
         or props.get("label")
         or props.get("title")
         or component.get("id")
@@ -507,6 +560,7 @@ def _build_image_prompt(
         f"Application: {app_schema.get('title', 'Generated App')}\n"
         f"Application type: {app_schema.get('app_type', 'app')}\n"
         f"Page: {page_name}\n"
+        f"Component type: {component.get('type', 'image')}\n"
         f"Image purpose: {label}\n"
         f"Original request: {project_prompt}\n"
         f"Visual direction: {visual_style}\n"

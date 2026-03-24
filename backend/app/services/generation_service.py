@@ -78,7 +78,7 @@ async def _make_ws_callback(project_id: int, version_id: int, session_factory):
 
 async def _init_agent_runs(version_id: int, engine) -> None:
     """预创建所有 Agent 的 pending 状态记录。"""
-    agents = ["product", "architect", "ui_builder", "code", "media", "qa"]
+    agents = ["product", "design_director", "architect", "ui_builder", "code", "media", "qa"]
     with Session(engine) as db:
         for agent_name in agents:
             run = AgentRun(version_id=version_id, agent_name=agent_name)
@@ -125,6 +125,7 @@ async def run_generation(
             "prompt": prompt,
             "app_type": app_type,
             "prd_json": None,
+            "design_brief": None,
             "app_schema": None,
             "ui_theme": None,
             "code_bundle": None,
@@ -139,12 +140,15 @@ async def run_generation(
         app_schema = final_state.get("app_schema")
         code_bundle = final_state.get("code_bundle")
         ui_theme = final_state.get("ui_theme")
+        design_brief = final_state.get("design_brief")
         critical_error = _get_critical_error(errors)
 
         if not _has_renderable_schema(app_schema):
             raise ValueError(critical_error or "Generation failed: missing app schema")
 
         raw_schema = dict(app_schema)
+        if isinstance(design_brief, dict) and design_brief:
+            raw_schema["design_brief"] = design_brief
         if isinstance(ui_theme, dict) and ui_theme:
             raw_schema["ui_theme"] = ui_theme
 

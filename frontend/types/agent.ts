@@ -1,4 +1,12 @@
-export type AgentName = "product" | "architect" | "ui_builder" | "code" | "media" | "qa";
+export type AgentName =
+  | "product"
+  | "design_director"
+  | "architect"
+  | "ui_builder"
+  | "code"
+  | "media"
+  | "qa";
+
 export type AgentStatus = "pending" | "running" | "done" | "error";
 
 export interface AgentState {
@@ -26,10 +34,14 @@ export interface GenerationStatusMessage {
 export type WsMessage = AgentStatusMessage | GenerationStatusMessage;
 
 export const AGENT_META: Record<AgentName, { label: string; description: string }> = {
-  product: { label: "Product Agent", description: "需求理解与规格整理" },
-  architect: { label: "Architect Agent", description: "应用结构设计" },
-  ui_builder: { label: "UI Builder", description: "界面布局与视觉方案" },
-  code: { label: "Code Agent", description: "前端逻辑与文件产物生成" },
+  product: { label: "Product Agent", description: "需求理解与产品规格整理" },
+  design_director: {
+    label: "Design Director",
+    description: "视觉方向、页面节奏和首版质量约束",
+  },
+  architect: { label: "Architect Agent", description: "应用结构与页面区块设计" },
+  ui_builder: { label: "UI Builder", description: "视觉主题与界面表现细化" },
+  code: { label: "Code Agent", description: "交互逻辑与项目文件生成" },
   media: { label: "Media Agent", description: "配图与视觉资源生成" },
-  qa: { label: "QA Agent", description: "一致性校验与问题检查" },
+  qa: { label: "QA Agent", description: "一致性校验与自动修复检查" },
 };

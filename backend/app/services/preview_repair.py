@@ -22,6 +22,12 @@ SUPPORTED_COMPONENT_TYPES = {
     "tag",
     "navbar",
     "stat-card",
+    "hero",
+    "feature-grid",
+    "stats-band",
+    "split-section",
+    "cta-band",
+    "auth-card",
 }
 
 
@@ -79,6 +85,7 @@ def _normalize_schema(schema: dict[str, Any], fixes: list[str]) -> dict[str, Any
         payload["data_models"] = []
 
     payload["ui_theme"] = _normalize_theme(payload.get("ui_theme"), fixes)
+    payload["design_brief"] = _normalize_design_brief(payload.get("design_brief"))
     return payload
 
 
@@ -171,6 +178,34 @@ def _normalize_component(
     if component_type == "image":
         props["src"] = _coerce_image_src(props.get("src"), props, fixes, component_id)
         props["alt"] = str(props.get("alt") or props.get("label") or "Preview image")
+
+    if component_type == "hero":
+        props["stats"] = _coerce_stat_items(props.get("stats"), fixes, component_id)
+        props["image_src"] = _coerce_image_src(props.get("image_src"), props, fixes, component_id)
+        props["image_alt"] = str(props.get("image_alt") or props.get("title") or "Hero image")
+
+    if component_type == "feature-grid":
+        props["items"] = _coerce_feature_items(props.get("items"), fixes, component_id)
+        props["columns"] = _coerce_column_count(props.get("columns"))
+
+    if component_type == "stats-band":
+        props["items"] = _coerce_stat_items(props.get("items"), fixes, component_id)
+
+    if component_type == "split-section":
+        props["bullets"] = _coerce_string_items(props.get("bullets"))
+        props["image_src"] = _coerce_image_src(props.get("image_src"), props, fixes, component_id)
+        props["image_alt"] = str(props.get("image_alt") or props.get("title") or "Section image")
+        props["reverse"] = bool(props.get("reverse"))
+
+    if component_type == "cta-band":
+        props["title"] = str(props.get("title") or props.get("heading") or "Ready to get started?")
+        props["description"] = str(props.get("description") or "")
+
+    if component_type == "auth-card":
+        props["image_src"] = _coerce_image_src(props.get("image_src"), props, fixes, component_id)
+        props["image_alt"] = str(props.get("image_alt") or props.get("title") or "Authentication visual")
+        props["title"] = str(props.get("title") or "Welcome back")
+        props["description"] = str(props.get("description") or "")
 
     raw_children = component.get("children")
     if not isinstance(raw_children, list):
@@ -399,6 +434,14 @@ def _coerce_columns(raw_columns: Any, fixes: list[str], component_id: str) -> li
     return []
 
 
+def _coerce_column_count(raw_columns: Any) -> int:
+    try:
+        value = int(raw_columns)
+    except (TypeError, ValueError):
+        return 3
+    return max(1, min(value, 4))
+
+
 def _coerce_rows(raw_rows: Any, fixes: list[str], component_id: str) -> list[dict[str, Any]]:
     if isinstance(raw_rows, list):
         rows: list[dict[str, Any]] = []
@@ -416,6 +459,59 @@ def _coerce_rows(raw_rows: Any, fixes: list[str], component_id: str) -> list[dic
     if raw_rows is not None:
         fixes.append(f"{component_id} rows was not renderable and was reset")
     return []
+
+
+def _coerce_string_items(raw_items: Any) -> list[str]:
+    if isinstance(raw_items, list):
+        return [str(item) for item in raw_items if str(item).strip()]
+    if isinstance(raw_items, str):
+        return [item.strip() for item in re.split(r"[,\n|/]+", raw_items) if item.strip()]
+    return []
+
+
+def _coerce_feature_items(raw_items: Any, fixes: list[str], component_id: str) -> list[dict[str, str]]:
+    if not isinstance(raw_items, list):
+        if raw_items is not None:
+            fixes.append(f"{component_id} items was not a list and was reset")
+        return []
+
+    items: list[dict[str, str]] = []
+    for index, item in enumerate(raw_items):
+        if isinstance(item, dict):
+            items.append(
+                {
+                    "title": str(item.get("title") or item.get("label") or f"Feature {index + 1}"),
+                    "description": str(item.get("description") or item.get("text") or ""),
+                    "badge": str(item.get("badge") or ""),
+                    "icon": str(item.get("icon") or ""),
+                }
+            )
+        elif isinstance(item, str):
+            items.append({"title": item, "description": "", "badge": "", "icon": ""})
+        else:
+            fixes.append(f"{component_id} items[{index}] was dropped because it was not renderable")
+    return items
+
+
+def _coerce_stat_items(raw_items: Any, fixes: list[str], component_id: str) -> list[dict[str, str]]:
+    if not isinstance(raw_items, list):
+        if raw_items is not None:
+            fixes.append(f"{component_id} stat items was not a list and was reset")
+        return []
+
+    items: list[dict[str, str]] = []
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            fixes.append(f"{component_id} stat items[{index}] was dropped because it was not an object")
+            continue
+        items.append(
+            {
+                "label": str(item.get("label") or f"Metric {index + 1}"),
+                "value": str(item.get("value") or item.get("number") or "--"),
+                "caption": str(item.get("caption") or item.get("change") or ""),
+            }
+        )
+    return items
 
 
 def _coerce_links(raw_links: Any, fixes: list[str], owner: str) -> list[dict[str, str]]:
@@ -471,8 +567,26 @@ def _normalize_theme(raw_theme: Any, fixes: list[str]) -> dict[str, Any]:
     theme.setdefault("font_family", "system-ui, sans-serif")
     theme.setdefault("border_radius", "12px")
     theme.setdefault("spacing_unit", 4)
+    theme.setdefault("canvas_mode", "soft")
+    theme.setdefault("surface_mode", "layered")
+    theme.setdefault("density", "balanced")
+    theme.setdefault("accent_style", "gradient")
+    theme.setdefault("shadow_strength", "soft")
 
     if not isinstance(theme.get("component_styles"), dict):
         theme["component_styles"] = {}
 
     return theme
+
+
+def _normalize_design_brief(raw_brief: Any) -> dict[str, Any]:
+    brief = copy.deepcopy(raw_brief) if isinstance(raw_brief, dict) else {}
+    brief.setdefault("experience_goal", "")
+    brief.setdefault("primary_user_mindset", "")
+    brief.setdefault("visual_direction", "")
+    brief.setdefault("layout_density", "balanced")
+    brief["tone_keywords"] = _coerce_string_items(brief.get("tone_keywords"))
+    brief["section_recommendations"] = _coerce_string_items(brief.get("section_recommendations"))
+    brief["quality_checklist"] = _coerce_string_items(brief.get("quality_checklist"))
+    brief["avoid_patterns"] = _coerce_string_items(brief.get("avoid_patterns"))
+    return brief

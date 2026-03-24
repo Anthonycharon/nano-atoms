@@ -88,6 +88,57 @@ function buildImagePlaceholderSrc(label: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function getFeatureItems(value: unknown): Array<{
+  title: string;
+  description: string;
+  badge?: string;
+  icon?: string;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      if (typeof item === "string") {
+        return { title: item, description: "" };
+      }
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return {
+          title: String(record.title ?? record.label ?? `Feature ${index + 1}`),
+          description: String(record.description ?? record.text ?? ""),
+          badge: record.badge ? String(record.badge) : undefined,
+          icon: record.icon ? String(record.icon) : undefined,
+        };
+      }
+      return null;
+    })
+    .filter(
+      (
+        item
+      ): item is { title: string; description: string; badge?: string; icon?: string } =>
+        item !== null
+    );
+}
+
+function getStatItems(value: unknown): Array<{ label: string; value: string; caption: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      return {
+        label: String(record.label ?? `Metric ${index + 1}`),
+        value: String(record.value ?? record.number ?? "--"),
+        caption: record.caption ? String(record.caption) : record.change ? String(record.change) : "",
+      };
+    })
+    .filter((item): item is { label: string; value: string; caption: string } => item !== null);
+}
+
+function getImageSource(value: unknown, label: string): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return buildImagePlaceholderSrc(label);
+}
+
 export function renderComponent(
   node: ComponentNode,
   ctx: RendererContext,
@@ -333,6 +384,383 @@ export function renderComponent(
           />
         </div>
       );
+
+    case "hero": {
+      const heroImage = getImageSource(
+        node.props.image_src,
+        String(node.props.image_alt ?? node.props.title ?? "Hero image")
+      );
+      const stats = getStatItems(node.props.stats);
+      return (
+        <section
+          key={node.id}
+          className={`overflow-hidden px-4 pt-6 md:px-6 md:pt-8 ${extraClass}`}
+        >
+          <div className="mx-auto grid max-w-6xl gap-8 rounded-[28px] border border-white/60 bg-white/85 p-6 shadow-[0_28px_80px_rgba(15,23,42,0.12)] backdrop-blur md:grid-cols-[1.05fr_0.95fr] md:p-8">
+            <div className="flex flex-col justify-center">
+              {!!node.props.eyebrow && (
+                <div className="mb-4 inline-flex w-fit rounded-full bg-orange-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">
+                  {String(node.props.eyebrow)}
+                </div>
+              )}
+              <h1 className="max-w-2xl text-4xl font-black leading-tight text-slate-950 md:text-6xl">
+                {String(node.props.title ?? "Built for better first impressions")}
+              </h1>
+              {!!node.props.description && (
+                <p className="mt-5 max-w-xl text-base leading-8 text-slate-600 md:text-lg">
+                  {String(node.props.description)}
+                </p>
+              )}
+              <div className="mt-8 flex flex-wrap gap-3">
+                {!!node.props.primary_cta_label && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (node.props.primary_cta_route) {
+                        ctx.navigate(String(node.props.primary_cta_route));
+                      }
+                    }}
+                    className="rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg"
+                    style={{ backgroundColor: "var(--color-primary)" }}
+                  >
+                    {String(node.props.primary_cta_label)}
+                  </button>
+                )}
+                {!!node.props.secondary_cta_label && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (node.props.secondary_cta_route) {
+                        ctx.navigate(String(node.props.secondary_cta_route));
+                      }
+                    }}
+                    className="rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-400"
+                  >
+                    {String(node.props.secondary_cta_label)}
+                  </button>
+                )}
+              </div>
+              {stats.length > 0 && (
+                <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {stats.map((item) => (
+                    <div
+                      key={`${node.id}-${item.label}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
+                    >
+                      <div className="text-2xl font-black text-slate-900">{item.value}</div>
+                      <div className="mt-1 text-sm font-medium text-slate-700">{item.label}</div>
+                      {!!item.caption && (
+                        <div className="mt-1 text-xs leading-5 text-slate-500">{item.caption}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="overflow-hidden rounded-[24px] bg-slate-100 shadow-[0_24px_64px_rgba(15,23,42,0.14)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroImage}
+                alt={String(node.props.image_alt ?? "")}
+                className="h-full min-h-[280px] w-full object-cover"
+                onError={(event) => {
+                  const fallback = buildImagePlaceholderSrc(
+                    String(node.props.image_alt ?? node.props.title ?? "Hero image")
+                  );
+                  if (event.currentTarget.src !== fallback) {
+                    event.currentTarget.src = fallback;
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    case "feature-grid": {
+      const items = getFeatureItems(node.props.items);
+      const columns = Math.max(1, Math.min(Number(node.props.columns ?? 3), 4));
+      const columnClass =
+        columns >= 4
+          ? "md:grid-cols-4"
+          : columns === 2
+            ? "md:grid-cols-2"
+            : "md:grid-cols-3";
+      return (
+        <section key={node.id} className={`px-4 md:px-6 ${extraClass}`}>
+          <div className="mx-auto max-w-6xl rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+            {!!node.props.title && (
+              <h2 className="text-2xl font-black text-slate-950 md:text-3xl">
+                {String(node.props.title)}
+              </h2>
+            )}
+            {!!node.props.description && (
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
+                {String(node.props.description)}
+              </p>
+            )}
+            <div className={`mt-6 grid grid-cols-1 gap-4 ${columnClass}`}>
+              {items.map((item) => (
+                <article
+                  key={`${node.id}-${item.title}`}
+                  className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5"
+                >
+                  {(item.badge || item.icon) && (
+                    <div className="mb-3 flex items-center gap-2">
+                      {!!item.icon && (
+                        <span className="text-lg text-[color:var(--color-primary)]">{item.icon}</span>
+                      )}
+                      {!!item.badge && (
+                        <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <h3 className="text-lg font-bold text-slate-900">{item.title}</h3>
+                  {!!item.description && (
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    case "stats-band": {
+      const items = getStatItems(node.props.items);
+      return (
+        <section key={node.id} className={`px-4 md:px-6 ${extraClass}`}>
+          <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.08)] md:grid-cols-4">
+            {items.map((item) => (
+              <div key={`${node.id}-${item.label}`} className="rounded-2xl bg-slate-50/80 p-4 text-center">
+                <div className="text-3xl font-black text-slate-900">{item.value}</div>
+                <div className="mt-2 text-sm font-semibold text-slate-700">{item.label}</div>
+                {!!item.caption && (
+                  <div className="mt-1 text-xs leading-5 text-slate-500">{item.caption}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    case "split-section": {
+      const bullets = getStringArray(node.props.bullets);
+      const splitImage = getImageSource(
+        node.props.image_src,
+        String(node.props.image_alt ?? node.props.title ?? "Section image")
+      );
+      const reverse = Boolean(node.props.reverse);
+      return (
+        <section key={node.id} className={`px-4 md:px-6 ${extraClass}`}>
+          <div className="mx-auto max-w-6xl rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] md:p-8">
+            <div className="grid items-center gap-8 md:grid-cols-2">
+              <div className={reverse ? "md:order-2" : ""}>
+                {!!node.props.eyebrow && (
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-primary)]">
+                    {String(node.props.eyebrow)}
+                  </div>
+                )}
+                <h2 className="text-3xl font-black leading-tight text-slate-950 md:text-4xl">
+                  {String(node.props.title ?? "Section title")}
+                </h2>
+                {!!node.props.description && (
+                  <p className="mt-4 text-sm leading-7 text-slate-600 md:text-base">
+                    {String(node.props.description)}
+                  </p>
+                )}
+                {bullets.length > 0 && (
+                  <ul className="mt-5 space-y-3">
+                    {bullets.map((bullet) => (
+                      <li key={bullet} className="flex items-start gap-3 text-sm text-slate-700">
+                        <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[color:var(--color-primary)]" />
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {!!node.props.primary_cta_label && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (node.props.primary_cta_route) {
+                          ctx.navigate(String(node.props.primary_cta_route));
+                        }
+                      }}
+                      className="rounded-full px-5 py-3 text-sm font-semibold text-white"
+                      style={{ backgroundColor: "var(--color-primary)" }}
+                    >
+                      {String(node.props.primary_cta_label)}
+                    </button>
+                  )}
+                  {!!node.props.secondary_cta_label && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (node.props.secondary_cta_route) {
+                          ctx.navigate(String(node.props.secondary_cta_route));
+                        }
+                      }}
+                      className="rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700"
+                    >
+                      {String(node.props.secondary_cta_label)}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div
+                className={`overflow-hidden rounded-[24px] bg-slate-100 shadow-[0_24px_64px_rgba(15,23,42,0.14)] ${
+                  reverse ? "md:order-1" : ""
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={splitImage}
+                  alt={String(node.props.image_alt ?? "")}
+                  className="h-full min-h-[260px] w-full object-cover"
+                  onError={(event) => {
+                    const fallback = buildImagePlaceholderSrc(
+                      String(node.props.image_alt ?? node.props.title ?? "Section image")
+                    );
+                    if (event.currentTarget.src !== fallback) {
+                      event.currentTarget.src = fallback;
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    case "cta-band":
+      return (
+        <section key={node.id} className={`px-4 pb-4 md:px-6 ${extraClass}`}>
+          <div className="mx-auto max-w-6xl rounded-[30px] bg-slate-950 px-6 py-8 text-white shadow-[0_32px_80px_rgba(15,23,42,0.24)] md:px-8 md:py-10">
+            <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <h2 className="text-3xl font-black leading-tight md:text-4xl">
+                  {String(node.props.title ?? "Move from idea to launch faster")}
+                </h2>
+                {!!node.props.description && (
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 md:text-base">
+                    {String(node.props.description)}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {!!node.props.primary_cta_label && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (node.props.primary_cta_route) {
+                        ctx.navigate(String(node.props.primary_cta_route));
+                      }
+                    }}
+                    className="rounded-full px-5 py-3 text-sm font-semibold text-white"
+                    style={{ background: "linear-gradient(135deg, var(--color-primary), #fb7185)" }}
+                  >
+                    {String(node.props.primary_cta_label)}
+                  </button>
+                )}
+                {!!node.props.secondary_cta_label && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (node.props.secondary_cta_route) {
+                        ctx.navigate(String(node.props.secondary_cta_route));
+                      }
+                    }}
+                    className="rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white"
+                  >
+                    {String(node.props.secondary_cta_label)}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+
+    case "auth-card": {
+      const authImage = getImageSource(
+        node.props.image_src,
+        String(node.props.image_alt ?? node.props.title ?? "Authentication visual")
+      );
+      return (
+        <section key={node.id} className={`px-4 py-8 md:px-6 md:py-10 ${extraClass}`}>
+          <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[32px] border border-white/60 bg-white/90 shadow-[0_30px_90px_rgba(15,23,42,0.14)] md:grid-cols-[0.92fr_1.08fr]">
+            <div className="relative min-h-[280px] overflow-hidden bg-slate-950">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={authImage}
+                alt={String(node.props.image_alt ?? "")}
+                className="absolute inset-0 h-full w-full object-cover opacity-80"
+                onError={(event) => {
+                  const fallback = buildImagePlaceholderSrc(
+                    String(node.props.image_alt ?? node.props.title ?? "Authentication visual")
+                  );
+                  if (event.currentTarget.src !== fallback) {
+                    event.currentTarget.src = fallback;
+                  }
+                }}
+              />
+              <div className="relative flex h-full flex-col justify-end bg-gradient-to-t from-slate-950 via-slate-900/55 to-transparent p-8 text-white">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">
+                  {String(node.props.aside_title ?? "Nano Atoms")}
+                </div>
+                <div className="mt-3 text-3xl font-black leading-tight">
+                  {String(node.props.title ?? "Welcome back")}
+                </div>
+                {!!node.props.aside_text && (
+                  <p className="mt-3 max-w-md text-sm leading-7 text-white/80">
+                    {String(node.props.aside_text)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="p-6 md:p-10">
+              <h2 className="text-3xl font-black text-slate-950">
+                {String(node.props.title ?? "Welcome back")}
+              </h2>
+              {!!node.props.description && (
+                <p className="mt-3 text-sm leading-7 text-slate-600">
+                  {String(node.props.description)}
+                </p>
+              )}
+              <div className="mt-6 space-y-4">
+                {children.map((child) => renderComponent(child, ctx, bundle, theme))}
+              </div>
+              {!!node.props.footer_text && (
+                <div className="mt-5 text-sm text-slate-500">
+                  {String(node.props.footer_text)}{" "}
+                  {!!node.props.footer_link_label && (
+                    <button
+                      type="button"
+                      className="font-semibold text-[color:var(--color-primary)]"
+                      onClick={() => {
+                        if (node.props.footer_link_route) {
+                          ctx.navigate(String(node.props.footer_link_route));
+                        }
+                      }}
+                    >
+                      {String(node.props.footer_link_label)}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      );
+    }
 
     case "modal":
       return (
