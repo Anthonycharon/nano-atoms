@@ -9,6 +9,7 @@ from typing import Any
 
 QUALITY_BLOCK_TYPES = {"hero", "feature-grid", "stats-band", "split-section", "cta-band", "auth-card"}
 EXPORT_CORE_FILES = {"index.html", "src/styles.css", "src/app.js", "src/schema.js"}
+LAYOUT_ARCHETYPES = {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}
 
 
 def run_quality_guardian(
@@ -24,12 +25,14 @@ def run_quality_guardian(
     image_result = image_result or {}
     applied_repairs: list[str] = []
 
+    applied_repairs.extend(_repair_layout_archetypes(schema))
+
     if _should_append_cta_band(schema):
         _append_cta_band(schema)
-        applied_repairs.append("Added a closing CTA section on the first page to strengthen the conversion flow.")
+        applied_repairs.append("已为首页补充收尾 CTA 区块，增强页面的转化闭环。")
 
     if fixes:
-        applied_repairs.extend(f"Applied preview repair: {item}" for item in fixes[:4])
+        applied_repairs.extend(f"已应用预览修复：{item}" for item in fixes[:4])
 
     report = _build_quality_report(
         app_schema=schema,
@@ -63,6 +66,12 @@ def _build_quality_report(
         if isinstance(component, dict) and component.get("type")
     }
     quality_blocks = component_types & QUALITY_BLOCK_TYPES
+    schema_layout = _normalize_layout_archetype(app_schema.get("layout_archetype"))
+    first_page_layout = _normalize_layout_archetype(
+        first_page.get("layout_archetype") if isinstance(first_page, dict) else None,
+        schema_layout,
+    )
+    app_type_text = str(app_schema.get("app_type") or "").lower()
     form_handlers = code_bundle.get("form_handlers", []) if isinstance(code_bundle, dict) else []
     page_transitions = code_bundle.get("page_transitions", []) if isinstance(code_bundle, dict) else []
     export_files = {
@@ -74,38 +83,56 @@ def _build_quality_report(
     checks = [
         _build_check(
             "renderability",
-            "Preview Renderability",
+            "预览可渲染性",
             "passed" if pages and any(_page_has_components(page) for page in pages) else "warning",
-            "Schema includes renderable pages." if pages else "No renderable page was found in the generated schema.",
+            "当前 Schema 包含可正常渲染的页面。"
+            if pages
+            else "生成结果中没有可渲染的页面。",
+        ),
+        _build_check(
+            "layout_signature",
+            "布局骨架",
+            (
+                "warning"
+                if first_page_layout == "centered-auth"
+                and not any(token in app_type_text for token in {"auth", "login", "register", "signin", "signup"})
+                else "passed"
+            ),
+            (
+                "首页仍然收敛成居中认证页骨架；该需求更适合营销页、编辑型内容页、仪表盘或工作台布局。"
+                if first_page_layout == "centered-auth"
+                and not any(token in app_type_text for token in {"auth", "login", "register", "signin", "signup"})
+                else f"首页当前采用 {first_page_layout} 布局骨架。"
+            ),
         ),
         _build_check(
             "visual_hierarchy",
-            "Visual Hierarchy",
+            "视觉层级",
             "passed" if quality_blocks else "warning",
             (
-                f"First page uses {len(quality_blocks)} high-value section block(s): {', '.join(sorted(quality_blocks))}."
+                f"首页使用了 {len(quality_blocks)} 个高价值区块：{', '.join(sorted(quality_blocks))}。"
                 if quality_blocks
-                else "First page still leans on primitive blocks; consider adding hero, split, or CTA sections."
+                else "首页仍偏向基础组件堆叠，建议补充 Hero、分栏内容或 CTA 区块。"
             ),
         ),
         _build_check(
             "interaction_logic",
-            "Interaction Coverage",
+            "交互覆盖",
             "passed" if form_handlers or page_transitions else "warning",
             (
-                f"Generated {len(form_handlers)} form handler(s) and {len(page_transitions)} page transition(s)."
+                f"已生成 {len(form_handlers)} 个表单处理逻辑，以及 {len(page_transitions)} 个页面跳转逻辑。"
                 if form_handlers or page_transitions
-                else "No explicit form handling or page transition logic was generated."
+                else "当前版本没有生成明确的表单处理或页面跳转逻辑。"
             ),
         ),
         _build_check(
             "export_completeness",
-            "Export Completeness",
+            "导出完整性",
             "passed" if EXPORT_CORE_FILES.issubset(export_files) else "warning",
             (
-                "Static export contains the HTML, CSS, and runtime entry files."
+                "静态导出已包含 HTML、CSS 与运行时入口文件。"
                 if EXPORT_CORE_FILES.issubset(export_files)
-                else "Export bundle is missing at least one core file."
+                else "导出文件缺少至少一个核心运行文件。"
             ),
         ),
     ]
@@ -115,23 +142,29 @@ def _build_quality_report(
     attempted_images = int(image_result.get("attempted", 0) or 0)
     image_status = "passed" if generated_images > 0 else "fixed" if attempted_images == 0 or skipped_images >= 0 else "warning"
     if generated_images > 0:
-        image_detail = f"Generated {generated_images} supporting image asset(s)."
+        image_detail = f"已生成 {generated_images} 个配图资源。"
     elif attempted_images > 0:
-        image_detail = f"Skipped {skipped_images} unresolved image slot(s) without blocking the main flow."
+        image_detail = f"有 {skipped_images} 个图片位未解析成功，已静默跳过且未阻塞主流程。"
     else:
-        image_detail = "No image slot was needed for this application."
-    checks.append(_build_check("visual_assets", "Visual Assets", image_status, image_detail))
+        image_detail = "该应用当前不需要额外图片资源。"
+    checks.append(_build_check("visual_assets", "视觉资源", image_status, image_detail))
 
     repair_status = "fixed" if preview_fixes or applied_repairs else "passed"
     repair_detail = (
-        f"Applied {len(applied_repairs)} automatic repair/polish action(s)."
+        f"已执行 {len(applied_repairs)} 项自动修复或润色动作。"
         if preview_fixes or applied_repairs
-        else "No runtime repair was needed."
+        else "当前版本无需额外运行时修复。"
     )
-    checks.append(_build_check("self_healing", "Self-healing Pass", repair_status, repair_detail))
+    checks.append(_build_check("self_healing", "自动修复", repair_status, repair_detail))
 
     score = _score_checks(checks)
-    recommended_prompts = _build_recommended_prompts(component_types, form_handlers, page_transitions)
+    recommended_prompts = _build_recommended_prompts(
+        component_types,
+        form_handlers,
+        page_transitions,
+        first_page_layout=first_page_layout,
+        app_type_text=app_type_text,
+    )
     summary = _build_summary(score, checks, applied_repairs)
 
     return {
@@ -176,15 +209,15 @@ def _build_summary(score: int, checks: list[dict[str, str]], applied_repairs: li
     warning_count = sum(1 for check in checks if check["status"] == "warning")
     fixed_count = sum(1 for check in checks if check["status"] == "fixed")
     if warning_count == 0 and fixed_count == 0:
-        return f"Quality Guardian passed this version with a score of {score}/100."
+        return f"质量守护已通过，本版本评分为 {score}/100。"
     if warning_count == 0:
         return (
-            f"Quality Guardian stabilized this version with {fixed_count} auto-fix step(s) "
-            f"and a final score of {score}/100."
+            f"质量守护已完成稳定化处理，共执行 {fixed_count} 项自动修复，"
+            f"最终评分为 {score}/100。"
         )
     return (
-        f"Quality Guardian completed with {warning_count} watch item(s), "
-        f"{len(applied_repairs)} repair/polish action(s), and a score of {score}/100."
+        f"质量守护已完成，本次发现 {warning_count} 个关注项，"
+        f"执行了 {len(applied_repairs)} 项修复或润色动作，最终评分为 {score}/100。"
     )
 
 
@@ -192,17 +225,26 @@ def _build_recommended_prompts(
     component_types: set[str],
     form_handlers: list[Any],
     page_transitions: list[Any],
+    *,
+    first_page_layout: str,
+    app_type_text: str,
 ) -> list[str]:
     prompts: list[str] = []
 
+    if first_page_layout == "centered-auth" and not any(
+        token in app_type_text for token in {"auth", "login", "register", "signin", "signup"}
+    ):
+        prompts.append(
+            "将首页改为更适合当前需求的非认证骨架，例如工作台、仪表盘或编辑型内容布局。"
+        )
     if "hero" not in component_types and "auth-card" not in component_types:
-        prompts.append("Add a stronger hero section with clearer product value and one primary CTA.")
+        prompts.append("补充更强的 Hero 区，明确产品价值点，并保留一个主 CTA。")
     if "cta-band" not in component_types:
-        prompts.append("Close the page with a conversion-focused CTA section and supporting proof points.")
+        prompts.append("在页面尾部补一段转化导向的 CTA，并搭配可信证明信息。")
     if not form_handlers:
-        prompts.append("Add one actionable form flow with validation and a clearer success state.")
+        prompts.append("增加一个可执行的表单流程，并补上校验与清晰的成功态。")
     if not page_transitions:
-        prompts.append("Add a clearer navigation or next-step flow between key pages.")
+        prompts.append("补充关键页面之间更清晰的导航或下一步流转。")
 
     return prompts[:3]
 
@@ -216,6 +258,13 @@ def _should_append_cta_band(app_schema: dict[str, Any]) -> bool:
     if not isinstance(first_page, dict):
         return False
 
+    first_page_layout = _normalize_layout_archetype(
+        first_page.get("layout_archetype"),
+        _normalize_layout_archetype(app_schema.get("layout_archetype")),
+    )
+    if first_page_layout not in {"marketing", "editorial", "immersive"}:
+        return False
+
     components = first_page.get("components")
     if not isinstance(components, list) or len(components) < 2:
         return False
@@ -226,6 +275,39 @@ def _should_append_cta_band(app_schema: dict[str, Any]) -> bool:
         if isinstance(component, dict) and component.get("type")
     }
     return "cta-band" not in component_types and bool(component_types & {"hero", "feature-grid", "split-section"})
+
+
+def _repair_layout_archetypes(app_schema: dict[str, Any]) -> list[str]:
+    repairs: list[str] = []
+    suggested_app_layout = _suggest_layout_archetype(app_schema)
+    current_app_layout = _normalize_layout_archetype(app_schema.get("layout_archetype"))
+    if current_app_layout != suggested_app_layout:
+        app_schema["layout_archetype"] = suggested_app_layout
+        repairs.append(f"已将应用整体布局骨架调整为 {suggested_app_layout}。")
+    else:
+        app_schema["layout_archetype"] = current_app_layout
+
+    pages = app_schema.get("pages")
+    if not isinstance(pages, list):
+        return repairs
+
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        suggested_page_layout = _suggest_page_layout(
+            page,
+            str(app_schema.get("layout_archetype") or suggested_app_layout),
+        )
+        current_page_layout = _normalize_layout_archetype(page.get("layout_archetype"), suggested_page_layout)
+        if current_page_layout != suggested_page_layout:
+            page["layout_archetype"] = suggested_page_layout
+            repairs.append(
+                f"已将页面“{page.get('name') or page.get('id') or '未命名页面'}”调整为 {suggested_page_layout} 布局骨架。"
+            )
+        else:
+            page["layout_archetype"] = current_page_layout
+
+    return repairs
 
 
 def _append_cta_band(app_schema: dict[str, Any]) -> None:
@@ -248,11 +330,11 @@ def _append_cta_band(app_schema: dict[str, Any]) -> None:
             "id": "quality_guardian_cta",
             "type": "cta-band",
             "props": {
-                "title": f"Ready to move {title} from draft to launch?",
-                "description": "This closing section was added automatically to improve page completion and conversion clarity.",
-                "primary_cta_label": "Continue building",
+                "title": f"准备把 {title} 从草稿推进到可交付版本了吗？",
+                "description": "这一收尾区块由质量守护自动补充，用来增强页面闭环与转化清晰度。",
+                "primary_cta_label": "继续完善",
                 "primary_cta_route": primary_route,
-                "secondary_cta_label": "Review details",
+                "secondary_cta_label": "查看详情",
                 "secondary_cta_route": primary_route,
             },
             "children": [],
@@ -279,3 +361,62 @@ def _upsert_quality_report_file(code_artifact: dict[str, Any], report: dict[str,
             return
 
     files.append(report_file)
+
+
+def _normalize_layout_archetype(value: Any, fallback: str = "workspace") -> str:
+    text = str(value or "").strip().lower()
+    return text if text in LAYOUT_ARCHETYPES else fallback
+
+
+def _suggest_layout_archetype(app_schema: dict[str, Any]) -> str:
+    app_type_text = str(app_schema.get("app_type") or "").lower()
+    design_brief = app_schema.get("design_brief") if isinstance(app_schema.get("design_brief"), dict) else {}
+    brief_layout = _normalize_layout_archetype(design_brief.get("layout_archetype"), "")
+    if brief_layout in LAYOUT_ARCHETYPES:
+        return brief_layout
+
+    search_space = " ".join(
+        [
+            app_type_text,
+            str(design_brief.get("visual_direction") or ""),
+            str(design_brief.get("experience_goal") or ""),
+            str(design_brief.get("primary_user_mindset") or ""),
+            " ".join(item for item in design_brief.get("section_recommendations", []) if isinstance(item, str)),
+        ]
+    ).lower()
+
+    if any(token in search_space for token in {"auth", "login", "signin", "signup", "register"}):
+        return "centered-auth"
+    if any(token in search_space for token in {"blog", "editorial", "article", "journal", "story", "content"}):
+        return "editorial"
+    if any(token in search_space for token in {"marketing", "landing", "campaign", "launch", "showcase", "promo"}):
+        return "marketing"
+    if any(token in search_space for token in {"immersive", "cinematic", "storyworld", "experience"}):
+        return "immersive"
+    if any(token in search_space for token in {"dashboard", "analytics", "admin", "crm", "report", "monitor"}):
+        return "dashboard"
+    return "workspace"
+
+
+def _suggest_page_layout(page: dict[str, Any], default_layout: str) -> str:
+    page_name = str(page.get("name") or "").lower()
+    route = str(page.get("route") or "").lower()
+    components = page.get("components") if isinstance(page.get("components"), list) else []
+    component_types = {
+        str(component.get("type"))
+        for component in components
+        if isinstance(component, dict) and component.get("type")
+    }
+    fingerprint = f"{page_name} {route} {' '.join(sorted(component_types))}"
+
+    if any(token in fingerprint for token in {"login", "signin", "signup", "register", "auth"}):
+        return "centered-auth"
+    if "auth-card" in component_types and len(component_types) <= 3:
+        return "centered-auth"
+    if any(token in fingerprint for token in {"blog", "article", "editorial", "journal", "story"}):
+        return "editorial"
+    if {"hero", "feature-grid", "split-section", "cta-band"} & component_types:
+        return "marketing" if default_layout != "immersive" else default_layout
+    if {"table", "stat-card"} & component_types:
+        return "dashboard" if default_layout == "dashboard" else "workspace"
+    return default_layout

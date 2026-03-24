@@ -17,6 +17,66 @@ def _json_text(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _hex_to_rgb(value: str | None) -> tuple[int, int, int] | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text.startswith("#"):
+        return None
+    hex_value = text[1:]
+    if len(hex_value) == 3:
+        hex_value = "".join(ch * 2 for ch in hex_value)
+    if len(hex_value) != 6 or not re.fullmatch(r"[0-9a-fA-F]{6}", hex_value):
+        return None
+    return (
+        int(hex_value[0:2], 16),
+        int(hex_value[2:4], 16),
+        int(hex_value[4:6], 16),
+    )
+
+
+def _hex_to_rgba(value: str | None, alpha: float, fallback: str) -> str:
+    rgb = _hex_to_rgb(value)
+    if rgb is None:
+        return fallback
+    return f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {alpha})"
+
+
+def _infer_theme_mode(theme: dict[str, Any]) -> str:
+    raw_mode = str(theme.get("theme_mode") or "").strip().lower()
+    if raw_mode in {"light", "dark", "mixed"}:
+        return raw_mode
+    rgb = _hex_to_rgb(theme.get("background_color"))
+    if rgb is None:
+        return "light"
+    luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255
+    return "dark" if luminance < 0.45 else "light"
+
+
+def _infer_layout_archetype(app_schema: dict[str, Any], page: dict[str, Any] | None = None) -> str:
+    raw_value = str((page or {}).get("layout_archetype") or app_schema.get("layout_archetype") or "").strip().lower()
+    if raw_value in {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}:
+        return raw_value
+
+    design_brief = app_schema.get("design_brief") if isinstance(app_schema.get("design_brief"), dict) else {}
+    brief_layout = str(design_brief.get("layout_archetype") or "").strip().lower()
+    if brief_layout in {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}:
+        return brief_layout
+
+    app_type = str(app_schema.get("app_type") or "").lower()
+    if re.search(r"auth|login|register|signup|signin", app_type):
+        return "centered-auth"
+    if re.search(r"blog|editorial|article|journal|content", app_type):
+        return "editorial"
+    if re.search(r"landing|marketing|campaign|launch|showcase|promo", app_type):
+        return "marketing"
+    if re.search(r"dashboard|analytics|admin|crm|report|monitor", app_type):
+        return "dashboard"
+    if re.search(r"immersive|cinematic|experience", app_type):
+        return "immersive"
+    return "workspace"
+
+
 def _image_placeholder_data_uri(label: str = "Preview Image") -> str:
     safe_label = (label or "Preview Image").strip()[:48] or "Preview Image"
     svg = f"""
@@ -77,57 +137,100 @@ def _build_schema_js(app_schema: dict[str, Any], code_bundle: dict[str, Any]) ->
 
 def _build_styles_css(app_schema: dict[str, Any]) -> str:
     theme = app_schema.get("ui_theme") or {}
+    mode = _infer_theme_mode(theme)
+    layout = _infer_layout_archetype(app_schema)
     primary = theme.get("primary_color", "#4f46e5")
     secondary = theme.get("secondary_color", "#c7d2fe")
-    background = theme.get("background_color", "#ffffff")
-    text = theme.get("text_color", "#0f172a")
+    background = theme.get("background_color", "#020617" if mode == "dark" else "#ffffff")
+    text = theme.get("text_color", "#f8fafc" if mode == "dark" else "#0f172a")
+    surface = theme.get("surface_color", "rgba(15,23,42,0.78)" if mode == "dark" else "rgba(255,255,255,0.92)")
+    surface_text = theme.get("surface_text_color", "#f8fafc" if mode == "dark" else text)
+    border = theme.get("border_color", "rgba(148,163,184,0.18)" if mode == "dark" else "#dbe3f0")
+    muted = theme.get("muted_text_color", "rgba(226,232,240,0.72)" if mode == "dark" else "#64748b")
+    input_background = theme.get("input_background", "rgba(15,23,42,0.92)" if mode == "dark" else "#ffffff")
+    subtle_surface = theme.get("subtle_surface_color", "rgba(30,41,59,0.7)" if mode == "dark" else "rgba(248,250,252,.86)")
+    page_background = theme.get(
+        "page_background",
+        f"radial-gradient(circle at top, #0f172a 0%, {background} 36%, #020617 100%)"
+        if mode == "dark"
+        else f"radial-gradient(circle at top, #eef4ff 0%, {background} 34%, #ffffff 100%)",
+    )
+    button_text = theme.get("button_text_color", "#f8fafc" if mode == "dark" else "#ffffff")
     radius = theme.get("border_radius", "16px")
     font_family = theme.get("font_family", '"Segoe UI", "PingFang SC", system-ui, sans-serif')
+    layout_widths = {
+        "marketing": ("1180px", "780px", "1080px"),
+        "editorial": ("960px", "760px", "980px"),
+        "dashboard": ("1320px", "860px", "1040px"),
+        "centered-auth": ("960px", "700px", "920px"),
+        "immersive": ("1480px", "860px", "1120px"),
+        "workspace": ("1380px", "860px", "1080px"),
+    }
+    shell_width, reading_width, auth_width = layout_widths.get(layout, layout_widths["workspace"])
     return f""":root {{
   --color-primary: {primary};
   --color-secondary: {secondary};
-  --color-surface: rgba(255,255,255,0.92);
+  --color-surface: {surface};
   --color-page: {background};
-  --color-border: #dbe3f0;
-  --color-muted: #64748b;
+  --color-border: {border};
+  --color-muted: {muted};
   --color-text: {text};
+  --color-surface-text: {surface_text};
+  --color-input-bg: {input_background};
+  --color-subtle-surface: {subtle_surface};
+  --color-button-text: {button_text};
+  --color-accent-soft: {_hex_to_rgba(primary, 0.22 if mode == "dark" else 0.12, "rgba(79,70,229,0.12)")};
+  --color-secondary-soft: {_hex_to_rgba(secondary, 0.24 if mode == "dark" else 0.14, "rgba(199,210,254,0.14)")};
   --radius: {radius};
-  --shadow: 0 24px 60px rgba(15,23,42,0.12);
+  --shadow: {"0 24px 64px rgba(2,6,23,0.44)" if mode == "dark" else "0 24px 60px rgba(15,23,42,0.12)"};
   --font-sans: {font_family};
+  --shell-width: {shell_width};
+  --reading-width: {reading_width};
+  --auth-width: {auth_width};
 }}
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; font-family: var(--font-sans); background: radial-gradient(circle at top, #eef4ff 0%, var(--color-page) 34%, #ffffff 100%); color: var(--color-text); }}
+body {{ margin: 0; font-family: var(--font-sans); background: {page_background}; color: var(--color-text); }}
 #app {{ min-height: 100vh; }}
-.app-shell {{ min-height: 100vh; padding: 32px 24px 80px; }}
-.page {{ max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }}
+.app-shell {{ min-height: 100vh; }}
+.app-shell.layout-dashboard,.app-shell.layout-workspace {{ padding: 32px 24px 80px; }}
+.app-shell.layout-editorial {{ padding: 40px 24px 88px; }}
+.app-shell.layout-marketing,.app-shell.layout-immersive {{ padding: 0 0 80px; }}
+.app-shell.layout-centered-auth {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px 24px 80px; }}
+.page {{ width: 100%; display: flex; flex-direction: column; gap: 24px; }}
+.page.layout-dashboard,.page.layout-workspace {{ max-width: var(--shell-width); margin: 0 auto; }}
+.page.layout-editorial {{ max-width: var(--reading-width); margin: 0 auto; }}
+.page.layout-centered-auth {{ max-width: var(--auth-width); margin: 0 auto; }}
+.page.layout-marketing,.page.layout-immersive {{ max-width: none; margin: 0; }}
 .stack,.form,.hero-copy,.split-copy,.auth-body {{ display: flex; flex-direction: column; gap: 14px; }}
-.heading {{ margin: 0; font-size: 2rem; line-height: 1.2; }}
+.heading {{ margin: 0; font-size: 2rem; line-height: 1.2; color: var(--color-surface-text); }}
 .text {{ margin: 0; color: var(--color-muted); line-height: 1.7; }}
-.button,.button-primary {{ appearance: none; border: 0; background: linear-gradient(135deg, var(--color-primary), #fb7185); color: white; border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
-.button-secondary {{ appearance: none; border: 1px solid var(--color-border); background: white; color: var(--color-text); border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
+.button,.button-primary {{ appearance: none; border: 0; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); color: var(--color-button-text); border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
+.button-secondary {{ appearance: none; border: 1px solid var(--color-border); background: { "rgba(255,255,255,0.04)" if mode == "dark" else "var(--color-surface)" }; color: var(--color-surface-text); border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
 .field-label {{ font-size: .95rem; color: var(--color-muted); }}
-.input,.select {{ width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; font: inherit; color: var(--color-text); background: #fff; }}
+.input,.select {{ width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; font: inherit; color: var(--color-surface-text); background: var(--color-input-bg); }}
 .card,.stat-card,.table-wrap,.navbar,.hero-card,.feature-card,.stats-card-wrap,.split-card,.cta-card,.auth-card-frame {{ background: var(--color-surface); border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 10px); box-shadow: var(--shadow); }}
 .card,.stat-card,.table-wrap,.navbar,.feature-card,.stats-card-wrap,.split-card,.cta-card {{ padding: 24px; }}
+.navbar,.hero-card,.feature-card,.stats-card-wrap,.split-card,.cta-card {{ width: min(100%, var(--shell-width)); margin: 0 auto; }}
+.auth-card-frame {{ width: min(100%, var(--auth-width)); margin: 0 auto; }}
 .navbar {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; }}
 .navbar-links {{ display: flex; gap: 12px; flex-wrap: wrap; }}
 .navbar-link {{ color: var(--color-muted); text-decoration: none; }}
-.tag {{ display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: rgba(79,70,229,0.08); color: var(--color-primary); font-size: .85rem; }}
+.tag {{ display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: var(--color-accent-soft); color: var(--color-primary); font-size: .85rem; }}
 .table {{ width: 100%; border-collapse: collapse; }}
 .table th,.table td {{ border-bottom: 1px solid var(--color-border); padding: 12px 10px; text-align: left; }}
 .hero-card,.split-grid,.auth-grid {{ display: grid; gap: 28px; }}
-.hero-eyebrow,.section-eyebrow {{ display: inline-flex; width: fit-content; padding: 6px 12px; border-radius: 999px; background: rgba(251,146,60,0.14); color: #c2410c; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }}
+.hero-eyebrow,.section-eyebrow {{ display: inline-flex; width: fit-content; padding: 6px 12px; border-radius: 999px; background: var(--color-secondary-soft); color: var(--color-primary); font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }}
 .hero-title,.section-title,.cta-title,.auth-title {{ margin: 0; font-weight: 900; line-height: 1.05; }}
 .hero-title {{ font-size: clamp(2.8rem,5vw,4.5rem); }}
-.section-title,.auth-title,.cta-title {{ font-size: clamp(2rem,4vw,3rem); }}
+.section-title,.auth-title,.cta-title {{ font-size: clamp(2rem,4vw,3rem); color: var(--color-surface-text); }}
 .hero-description,.section-description,.cta-description,.auth-description {{ margin: 0; line-height: 1.75; color: var(--color-muted); }}
 .hero-actions,.section-actions,.cta-actions {{ display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }}
-.hero-visual,.split-visual,.auth-visual {{ overflow: hidden; border-radius: calc(var(--radius) + 8px); background: #edf2ff; }}
+.hero-visual,.split-visual,.auth-visual {{ overflow: hidden; border-radius: calc(var(--radius) + 8px); background: var(--color-subtle-surface); }}
 .hero-visual img,.split-visual img,.auth-visual img,.image {{ display: block; width: 100%; height: 100%; object-fit: cover; }}
 .hero-stats,.stats-grid,.feature-grid-items {{ display: grid; gap: 12px; }}
 .hero-stats,.stats-grid {{ grid-template-columns: repeat(2,minmax(0,1fr)); }}
-.hero-stat,.stats-card {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: rgba(248,250,252,.86); padding: 16px; }}
-.feature-item {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: rgba(248,250,252,.86); padding: 18px; }}
+.hero-stat,.stats-card {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: var(--color-subtle-surface); padding: 16px; }}
+.feature-item {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: var(--color-subtle-surface); padding: 18px; }}
 .feature-item-title {{ margin: 0; font-size: 1.05rem; font-weight: 800; }}
 .feature-item-description {{ margin: 10px 0 0; color: var(--color-muted); line-height: 1.65; }}
 .split-bullets {{ margin: 12px 0 0; padding: 0; list-style: none; }}
@@ -140,13 +243,13 @@ body {{ margin: 0; font-family: var(--font-sans); background: radial-gradient(ci
 .auth-body {{ padding: 24px; }}
 .auth-footer {{ margin-top: 16px; color: var(--color-muted); }}
 .auth-link {{ border: 0; background: transparent; color: var(--color-primary); font: inherit; font-weight: 700; cursor: pointer; }}
-.pager {{ position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: rgba(255,255,255,.92); border: 1px solid var(--color-border); border-radius: 999px; padding: 8px 10px; box-shadow: var(--shadow); }}
+.pager {{ position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 8px 10px; box-shadow: var(--shadow); }}
 .pager-dot {{ width: 10px; height: 10px; border: 0; border-radius: 999px; background: #cbd5e1; cursor: pointer; }}
-.pager-dot.is-active {{ width: 28px; background: var(--color-primary); }}
+.pager-dot.is-active {{ width: 28px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); }}
 .toast {{ position: fixed; right: 24px; bottom: 24px; padding: 12px 16px; background: #16a34a; color: #fff; border-radius: 14px; box-shadow: var(--shadow); }}
 .modal {{ position: fixed; inset: 0; background: rgba(15,23,42,.42); display: flex; align-items: center; justify-content: center; padding: 24px; }}
-.modal-card {{ width: min(560px,100%); background: white; border-radius: calc(var(--radius) + 8px); padding: 24px; box-shadow: var(--shadow); }}
-.empty-state {{ max-width: 720px; margin: 64px auto; background: white; border: 1px dashed var(--color-border); border-radius: calc(var(--radius) + 8px); padding: 32px; text-align: center; color: var(--color-muted); }}
+.modal-card {{ width: min(560px,100%); background: var(--color-surface); border-radius: calc(var(--radius) + 8px); padding: 24px; box-shadow: var(--shadow); }}
+.empty-state {{ max-width: 720px; margin: 64px auto; background: var(--color-surface); border: 1px dashed var(--color-border); border-radius: calc(var(--radius) + 8px); padding: 32px; text-align: center; color: var(--color-muted); }}
 @media (min-width: 768px) {{
   .hero-card {{ grid-template-columns: 1.05fr .95fr; }}
   .split-grid {{ grid-template-columns: repeat(2,minmax(0,1fr)); align-items: center; }}
@@ -171,6 +274,8 @@ let toastTimer = null;
 const fallbackImage = "__IMAGE_PLACEHOLDER__";
 
 function getCurrentPage(){ return appSchema.pages.find((page) => page.route === currentRoute) || appSchema.pages?.[0]; }
+function normalizeLayoutArchetype(value, fallback = "workspace"){ const text = String(value || "").trim().toLowerCase(); return ["marketing","editorial","dashboard","centered-auth","workspace","immersive"].includes(text) ? text : fallback; }
+function getLayoutArchetype(page){ return normalizeLayoutArchetype(page?.layout_archetype || appSchema.layout_archetype || appSchema.design_brief?.layout_archetype || appSchema.app_type, "workspace"); }
 function getText(node, fallback = ""){ return String(node?.props?.text ?? node?.props?.children ?? node?.props?.label ?? fallback); }
 function getFormId(node, parentFormId){ return node?.props?.form_id || parentFormId || node?.id; }
 function getStringArray(value){ if(Array.isArray(value)) return value.map((item) => String(item)); if(typeof value === "string" && value.trim()) return value.split(/[,\n|/]+/).map((item) => item.trim()).filter(Boolean); return []; }
@@ -210,7 +315,7 @@ function renderNode(node, parentFormId){
 }
 
 function renderPager(){ const pager = document.createElement("div"); pager.className = "pager"; appSchema.pages.forEach((page) => { const dot = document.createElement("button"); dot.className = `pager-dot ${page.route === currentRoute ? "is-active" : ""}`; dot.title = page.name; dot.addEventListener("click", () => { currentRoute = page.route; render(); }); pager.appendChild(dot); }); return pager; }
-function render(){ root.innerHTML = ""; const page = getCurrentPage(); if(!page){ root.innerHTML = '<div class="empty-state">No renderable page in schema.</div>'; return; } const shell = document.createElement("div"); shell.className = "app-shell"; const pageEl = document.createElement("main"); pageEl.className = "page"; page.components.forEach((node) => pageEl.appendChild(renderNode(node))); shell.appendChild(pageEl); root.appendChild(shell); if((appSchema.pages || []).length > 1){ root.appendChild(renderPager()); } }
+function render(){ root.innerHTML = ""; const page = getCurrentPage(); if(!page){ root.innerHTML = '<div class="empty-state">No renderable page in schema.</div>'; return; } const layout = getLayoutArchetype(page); const shell = document.createElement("div"); shell.className = `app-shell layout-${layout}`; const pageEl = document.createElement("main"); pageEl.className = `page layout-${layout}`; page.components.forEach((node) => pageEl.appendChild(renderNode(node))); shell.appendChild(pageEl); root.appendChild(shell); if((appSchema.pages || []).length > 1){ root.appendChild(renderPager()); } }
 render();
 """.replace("__IMAGE_PLACEHOLDER__", _image_placeholder_data_uri())
 

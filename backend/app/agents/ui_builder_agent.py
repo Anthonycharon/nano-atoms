@@ -12,11 +12,20 @@ Return one JSON object only, with no markdown or commentary.
 
 Output format:
 {
+  "theme_mode": "light | dark | mixed",
   "primary_color": "#6366f1",
   "secondary_color": "#a5b4fc",
   "background_color": "#ffffff",
   "text_color": "#111827",
-  "font_family": "\"Plus Jakarta Sans\", \"Inter\", sans-serif",
+  "surface_color": "rgba(...) or #hex",
+  "surface_text_color": "#111827",
+  "border_color": "rgba(...) or #hex",
+  "muted_text_color": "rgba(...) or #hex",
+  "input_background": "rgba(...) or #hex",
+  "subtle_surface_color": "rgba(...) or #hex",
+  "button_text_color": "#ffffff",
+  "page_background": "valid CSS color or gradient",
+  "font_family": "\"Plus Jakarta Sans\", sans-serif",
   "border_radius": "18px",
   "spacing_unit": 5,
   "canvas_mode": "soft | contrast | editorial | spotlight",
@@ -32,11 +41,12 @@ Output format:
 }
 
 Rules:
-- Match the design brief rather than outputting a generic admin palette.
-- Favor bright, polished, product-ready themes.
-- Use typography and spacing choices that strengthen hierarchy.
-- Push the visual direction further for marketing, showcase, content, and auth experiences.
-- The theme must remain readable and production-looking in both desktop and mobile previews."""
+- Respect the user's explicit visual direction first. If they ask for black, dark, monochrome, neon, brutalist, luxury, glass, or playful, keep that direction.
+- Do not default every request to a bright SaaS palette.
+- Make the visual system reinforce the chosen layout archetype instead of forcing every app into the same neutral SaaS treatment.
+- Use theme tokens that make both the preview renderer and exported code feel consistent.
+- Keep contrast readable in desktop and mobile previews.
+- Make auth, landing, showcase, and content pages noticeably more expressive when the brief asks for it."""
 
 
 async def run_ui_builder_agent(state: dict) -> dict:
@@ -48,9 +58,10 @@ async def run_ui_builder_agent(state: dict) -> dict:
         if not isinstance(app_schema, dict) or not app_schema.get("pages"):
             raise ValueError("UI Builder Agent requires a valid app schema")
 
-        llm = make_llm(temperature=0.4)
+        llm = make_llm(temperature=0.45)
         app_context = build_app_context(state.get("app_type"))
         design_brief = state.get("design_brief")
+        prd_json = state.get("prd_json")
         page_names = [page["name"] for page in app_schema.get("pages", [])]
         response = await llm.ainvoke(
             [
@@ -60,6 +71,8 @@ async def run_ui_builder_agent(state: dict) -> dict:
                         f"{app_context}\n"
                         "Schema summary:\n"
                         f"{json.dumps({'title': app_schema.get('title'), 'pages': page_names}, ensure_ascii=False)}\n\n"
+                        "PRD JSON:\n"
+                        f"{json.dumps(prd_json or {}, ensure_ascii=False)}\n\n"
                         "Design brief:\n"
                         f"{json.dumps(design_brief or {}, ensure_ascii=False)}"
                     )
@@ -72,6 +85,7 @@ async def run_ui_builder_agent(state: dict) -> dict:
             raise ValueError("UI Builder Agent expected a JSON object response")
         summary = (
             f"Primary {ui_theme.get('primary_color', 'N/A')}, "
+            f"mode {ui_theme.get('theme_mode', 'auto')}, "
             f"canvas {ui_theme.get('canvas_mode', 'balanced')}"
         )
 

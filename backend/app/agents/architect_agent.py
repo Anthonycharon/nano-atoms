@@ -15,11 +15,13 @@ Schema format:
   "app_id": "unique_app_id",
   "title": "Application title",
   "app_type": "application shape such as dashboard, tool, admin, internal, landing, marketing, blog, ecommerce, auth",
+  "layout_archetype": "marketing | editorial | dashboard | centered-auth | workspace | immersive",
   "pages": [
     {
       "id": "page_id",
       "name": "Page name",
       "route": "/route",
+      "layout_archetype": "marketing | editorial | dashboard | centered-auth | workspace | immersive",
       "components": [
         {
           "id": "component_id",
@@ -53,8 +55,14 @@ Supported action types: navigate, submit_form, open_modal, close_modal, set_valu
 Requirements:
 - Infer app_type from the requirement. Do not force it into a fixed shortlist.
 - Output a complete schema that can be rendered directly.
+- Choose a layout archetype for the app and for each page. Different page purposes can use different archetypes when helpful.
 - Use composite quality blocks when they improve clarity and polish.
 - Prefer fewer, stronger sections over many weak placeholder sections.
+- Only use centered-auth for true authentication or access-gating pages. Do not collapse blogs, assistants, dashboards, or tools into a login-card shell.
+- Marketing, launch, campaign, and showcase pages should usually lean marketing or immersive.
+- Blog, editorial, news, journal, and documentation pages should usually lean editorial.
+- Dashboards, analytics, admin, CRM, and monitoring pages should usually lean dashboard.
+- Internal tools, copilots, assistants, studios, and workflow apps should usually lean workspace.
 - For landing, showcase, campaign, content, and auth flows, avoid flat card stacks as the main structure.
 - For dashboards and internal tools, use clear hierarchy, summary bands, filters, and focused content groupings.
 - Include image-driven sections only when they add real value.

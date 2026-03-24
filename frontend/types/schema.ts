@@ -19,6 +19,14 @@ export type ComponentType =
   | "cta-band"
   | "auth-card";
 
+export type LayoutArchetype =
+  | "marketing"
+  | "editorial"
+  | "dashboard"
+  | "centered-auth"
+  | "workspace"
+  | "immersive";
+
 export interface ActionDef {
   trigger: "click" | "submit" | "change";
   type: "navigate" | "submit_form" | "open_modal" | "close_modal" | "set_value";
@@ -43,6 +51,7 @@ export interface Page {
   id: string;
   name: string;
   route: string;
+  layout_archetype?: LayoutArchetype;
   components: ComponentNode[];
 }
 
@@ -57,10 +66,19 @@ export interface DataModel {
 }
 
 export interface UITheme {
+  theme_mode?: "light" | "dark" | "mixed";
   primary_color: string;
   secondary_color: string;
   background_color: string;
   text_color: string;
+  surface_color?: string;
+  surface_text_color?: string;
+  border_color?: string;
+  muted_text_color?: string;
+  input_background?: string;
+  subtle_surface_color?: string;
+  button_text_color?: string;
+  page_background?: string;
   font_family: string;
   border_radius: string;
   spacing_unit: number;
@@ -76,8 +94,12 @@ export interface DesignBrief {
   experience_goal?: string;
   primary_user_mindset?: string;
   visual_direction?: string;
+  layout_archetype?: LayoutArchetype | "auto";
+  theme_mode?: "light" | "dark" | "mixed" | "auto";
+  color_story?: string;
   layout_density?: "airy" | "balanced" | "compact";
   tone_keywords?: string[];
+  style_constraints?: string[];
   section_recommendations?: string[];
   quality_checklist?: string[];
   avoid_patterns?: string[];
@@ -102,6 +124,7 @@ export interface AppSchema {
   app_id: string;
   title: string;
   app_type: string;
+  layout_archetype?: LayoutArchetype;
   pages: Page[];
   navigation?: NavigationItem[];
   data_models?: DataModel[];

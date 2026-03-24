@@ -30,6 +30,15 @@ SUPPORTED_COMPONENT_TYPES = {
     "auth-card",
 }
 
+SUPPORTED_LAYOUT_ARCHETYPES = {
+    "marketing",
+    "editorial",
+    "dashboard",
+    "centered-auth",
+    "workspace",
+    "immersive",
+}
+
 
 def repair_preview_payload(
     app_schema: dict[str, Any] | None,
@@ -75,7 +84,16 @@ def _normalize_schema(schema: dict[str, Any], fixes: list[str]) -> dict[str, Any
         fixes.append("pages was not a list and was reset")
         pages = []
 
-    payload["pages"] = [_normalize_page(page, index, fixes) for index, page in enumerate(pages)]
+    payload["design_brief"] = _normalize_design_brief(payload.get("design_brief"))
+    payload["layout_archetype"] = _normalize_layout_archetype(
+        payload.get("layout_archetype"),
+        payload.get("app_type"),
+        payload["design_brief"],
+    )
+    payload["pages"] = [
+        _normalize_page(page, index, fixes, payload["layout_archetype"])
+        for index, page in enumerate(pages)
+    ]
     payload["navigation"] = _coerce_links(payload.get("navigation"), fixes, "navigation")
 
     data_models = payload.get("data_models")
@@ -85,11 +103,15 @@ def _normalize_schema(schema: dict[str, Any], fixes: list[str]) -> dict[str, Any
         payload["data_models"] = []
 
     payload["ui_theme"] = _normalize_theme(payload.get("ui_theme"), fixes)
-    payload["design_brief"] = _normalize_design_brief(payload.get("design_brief"))
     return payload
 
 
-def _normalize_page(page: Any, index: int, fixes: list[str]) -> dict[str, Any]:
+def _normalize_page(
+    page: Any,
+    index: int,
+    fixes: list[str],
+    default_layout: str,
+) -> dict[str, Any]:
     if not isinstance(page, dict):
         fixes.append(f"page[{index}] was not an object and was replaced")
         page = {}
@@ -127,6 +149,7 @@ def _normalize_page(page: Any, index: int, fixes: list[str]) -> dict[str, Any]:
         "id": page_id,
         "name": str(page.get("name") or page_id),
         "route": route,
+        "layout_archetype": _normalize_page_layout_archetype(page, default_layout, normalized_components),
         "components": normalized_components,
     }
 
@@ -567,11 +590,20 @@ def _normalize_theme(raw_theme: Any, fixes: list[str]) -> dict[str, Any]:
     theme.setdefault("font_family", "system-ui, sans-serif")
     theme.setdefault("border_radius", "12px")
     theme.setdefault("spacing_unit", 4)
-    theme.setdefault("canvas_mode", "soft")
+    theme.setdefault("theme_mode", _infer_theme_mode(theme))
+    theme.setdefault("canvas_mode", "contrast" if theme["theme_mode"] == "dark" else "soft")
     theme.setdefault("surface_mode", "layered")
     theme.setdefault("density", "balanced")
     theme.setdefault("accent_style", "gradient")
     theme.setdefault("shadow_strength", "soft")
+    theme.setdefault("page_background", _default_page_background(theme))
+    theme.setdefault("surface_color", _default_surface_color(theme))
+    theme.setdefault("surface_text_color", _default_surface_text_color(theme))
+    theme.setdefault("border_color", _default_border_color(theme))
+    theme.setdefault("muted_text_color", _default_muted_text_color(theme))
+    theme.setdefault("input_background", _default_input_background(theme))
+    theme.setdefault("subtle_surface_color", _default_subtle_surface_color(theme))
+    theme.setdefault("button_text_color", "#f8fafc" if theme["theme_mode"] == "dark" else "#ffffff")
 
     if not isinstance(theme.get("component_styles"), dict):
         theme["component_styles"] = {}
@@ -584,9 +616,175 @@ def _normalize_design_brief(raw_brief: Any) -> dict[str, Any]:
     brief.setdefault("experience_goal", "")
     brief.setdefault("primary_user_mindset", "")
     brief.setdefault("visual_direction", "")
+    brief.setdefault("layout_archetype", "auto")
+    brief.setdefault("theme_mode", "auto")
+    brief.setdefault("color_story", "")
     brief.setdefault("layout_density", "balanced")
     brief["tone_keywords"] = _coerce_string_items(brief.get("tone_keywords"))
+    brief["style_constraints"] = _coerce_string_items(brief.get("style_constraints"))
     brief["section_recommendations"] = _coerce_string_items(brief.get("section_recommendations"))
     brief["quality_checklist"] = _coerce_string_items(brief.get("quality_checklist"))
     brief["avoid_patterns"] = _coerce_string_items(brief.get("avoid_patterns"))
     return brief
+
+
+def _normalize_layout_archetype(raw_value: Any, app_type: Any, brief: dict[str, Any] | None) -> str:
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in SUPPORTED_LAYOUT_ARCHETYPES:
+            return normalized
+    return _infer_layout_archetype(app_type, brief)
+
+
+def _normalize_page_layout_archetype(
+    page: dict[str, Any],
+    default_layout: str,
+    normalized_components: list[dict[str, Any]],
+) -> str:
+    raw_value = page.get("layout_archetype")
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in SUPPORTED_LAYOUT_ARCHETYPES:
+            return normalized
+
+    page_name = str(page.get("name") or "")
+    route = str(page.get("route") or "")
+    component_types = {
+        str(component.get("type"))
+        for component in normalized_components
+        if isinstance(component, dict) and component.get("type")
+    }
+    fingerprint = f"{page_name} {route} {' '.join(sorted(component_types))}".lower()
+
+    if any(token in fingerprint for token in {"login", "sign-in", "signin", "signup", "register", "auth"}):
+        return "centered-auth"
+    if "auth-card" in component_types and len(component_types) <= 3:
+        return "centered-auth"
+    if any(token in fingerprint for token in {"blog", "editorial", "article", "journal", "story"}):
+        return "editorial"
+    if {"hero", "feature-grid", "split-section", "cta-band"} & component_types:
+        return "marketing" if default_layout != "immersive" else default_layout
+    if {"table", "stat-card"} & component_types:
+        return "dashboard" if default_layout in {"dashboard", "workspace"} else "workspace"
+    return default_layout
+
+
+def _infer_theme_mode(theme: dict[str, Any]) -> str:
+    raw_mode = str(theme.get("theme_mode") or "").strip().lower()
+    if raw_mode in {"light", "dark", "mixed"}:
+        return raw_mode
+    if _looks_dark_color(str(theme.get("background_color") or "")):
+        return "dark"
+    return "light"
+
+
+def _infer_layout_archetype(app_type: Any, brief: dict[str, Any] | None) -> str:
+    brief = brief or {}
+    raw_brief_layout = str(brief.get("layout_archetype") or "").strip().lower()
+    if raw_brief_layout in SUPPORTED_LAYOUT_ARCHETYPES:
+        return raw_brief_layout
+
+    search_space = " ".join(
+        [
+            str(app_type or ""),
+            str(brief.get("visual_direction") or ""),
+            str(brief.get("experience_goal") or ""),
+            str(brief.get("primary_user_mindset") or ""),
+            " ".join(_coerce_string_items(brief.get("section_recommendations"))),
+            " ".join(_coerce_string_items(brief.get("tone_keywords"))),
+        ]
+    ).lower()
+
+    if any(token in search_space for token in {"login", "sign in", "signin", "signup", "register", "auth"}):
+        return "centered-auth"
+    if any(token in search_space for token in {"blog", "editorial", "journal", "article", "story", "content"}):
+        return "editorial"
+    if any(token in search_space for token in {"marketing", "landing", "campaign", "launch", "showcase", "promo"}):
+        return "marketing"
+    if any(token in search_space for token in {"immersive", "cinematic", "showcase", "storyworld", "experience"}):
+        return "immersive"
+    if any(token in search_space for token in {"dashboard", "analytics", "admin", "crm", "report", "monitor"}):
+        return "dashboard"
+    if any(token in search_space for token in {"workspace", "assistant", "tool", "internal", "studio", "copilot"}):
+        return "workspace"
+    return "workspace"
+
+
+def _default_page_background(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("page_background"), str) and theme["page_background"].strip():
+        return theme["page_background"].strip()
+    background = str(theme.get("background_color") or "#ffffff")
+    if theme.get("theme_mode") == "dark":
+        return f"radial-gradient(circle at top, {background} 0%, #0f172a 38%, #020617 100%)"
+    return f"radial-gradient(circle at top, #eef4ff 0%, {background} 38%, #ffffff 100%)"
+
+
+def _default_surface_color(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("surface_color"), str) and theme["surface_color"].strip():
+        return theme["surface_color"].strip()
+    if theme.get("theme_mode") == "dark":
+        return "rgba(15, 23, 42, 0.78)"
+    return "rgba(255, 255, 255, 0.92)"
+
+
+def _default_surface_text_color(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("surface_text_color"), str) and theme["surface_text_color"].strip():
+        return theme["surface_text_color"].strip()
+    return "#f8fafc" if theme.get("theme_mode") == "dark" else str(theme.get("text_color") or "#111827")
+
+
+def _default_border_color(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("border_color"), str) and theme["border_color"].strip():
+        return theme["border_color"].strip()
+    if theme.get("theme_mode") == "dark":
+        return "rgba(148, 163, 184, 0.18)"
+    return "#dbe3f0"
+
+
+def _default_muted_text_color(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("muted_text_color"), str) and theme["muted_text_color"].strip():
+        return theme["muted_text_color"].strip()
+    if theme.get("theme_mode") == "dark":
+        return "rgba(226, 232, 240, 0.72)"
+    return "#64748b"
+
+
+def _default_input_background(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("input_background"), str) and theme["input_background"].strip():
+        return theme["input_background"].strip()
+    if theme.get("theme_mode") == "dark":
+        return "rgba(15, 23, 42, 0.92)"
+    return "#ffffff"
+
+
+def _default_subtle_surface_color(theme: dict[str, Any]) -> str:
+    if isinstance(theme.get("subtle_surface_color"), str) and theme["subtle_surface_color"].strip():
+        return theme["subtle_surface_color"].strip()
+    if theme.get("theme_mode") == "dark":
+        return "rgba(30, 41, 59, 0.7)"
+    return "rgba(248, 250, 252, 0.86)"
+
+
+def _looks_dark_color(value: str) -> bool:
+    rgb = _hex_to_rgb(value)
+    if rgb is None:
+        return False
+    red, green, blue = rgb
+    luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
+    return luminance < 0.45
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int] | None:
+    text = value.strip()
+    if not text.startswith("#"):
+        return None
+    hex_value = text[1:]
+    if len(hex_value) == 3:
+        hex_value = "".join(ch * 2 for ch in hex_value)
+    if len(hex_value) != 6 or not re.fullmatch(r"[0-9a-fA-F]{6}", hex_value):
+        return None
+    return (
+        int(hex_value[0:2], 16),
+        int(hex_value[2:4], 16),
+        int(hex_value[4:6], 16),
+    )

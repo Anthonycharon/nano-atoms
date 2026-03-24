@@ -46,7 +46,7 @@ function QualityPanel({ report, isCyber }: { report: QualityReport; isCyber: boo
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className={`text-sm font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
-            Quality Guardian
+            质量守护
           </div>
           <div className={`mt-1 text-xs leading-6 ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
             {report.summary}
@@ -59,8 +59,8 @@ function QualityPanel({ report, isCyber }: { report: QualityReport; isCyber: boo
               : "border-indigo-100 bg-white"
           }`}
         >
-          <div className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${isCyber ? "text-slate-500" : "text-slate-400"}`}>
-            Quality Score
+          <div className={`text-[11px] font-semibold tracking-[0.14em] ${isCyber ? "text-slate-500" : "text-slate-400"}`}>
+            质量评分
           </div>
           <div className={`mt-1 text-2xl font-black ${isCyber ? "text-cyan-200" : "text-slate-900"}`}>
             {report.score}
@@ -86,7 +86,7 @@ function QualityPanel({ report, isCyber }: { report: QualityReport; isCyber: boo
       {(report.applied_repairs?.length ?? 0) > 0 && (
         <div className="mt-4">
           <div className={`text-xs font-medium ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
-            自动修复与收尾
+            自动修复与收敛
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {report.applied_repairs?.slice(0, 3).map((item) => (
@@ -236,7 +236,11 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
             }`}
           >
             {status === "queued" || status === "running" ? (
-              <div className={`flex h-full flex-col items-center justify-center ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+              <div
+                className={`flex h-full flex-col items-center justify-center ${
+                  isCyber ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
                 <div
                   className={`mb-4 h-12 w-12 animate-spin rounded-full border-2 ${
                     isCyber ? "border-cyan-400/15 border-t-cyan-300" : "border-indigo-200 border-t-indigo-500"
@@ -250,7 +254,11 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
                 </p>
               </div>
             ) : status === "failed" ? (
-              <div className={`flex h-full flex-col items-center justify-center text-center ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
+              <div
+                className={`flex h-full flex-col items-center justify-center text-center ${
+                  isCyber ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
                 <div className="mb-3 text-4xl">!</div>
                 <p className={`text-sm font-medium ${isCyber ? "text-slate-200" : "text-slate-700"}`}>
                   本次生成失败
@@ -267,9 +275,7 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
             ) : (
               <div
                 className={`overflow-auto rounded-2xl border shadow-[0_20px_50px_rgba(15,23,42,0.12)] transition-all duration-300 ${
-                  isCyber
-                    ? "border-cyan-400/12 bg-white"
-                    : "border-slate-200 bg-white"
+                  isCyber ? "border-cyan-400/12 bg-white" : "border-slate-200 bg-white"
                 }`}
                 style={{
                   width: previewDevice === "mobile" ? "375px" : "100%",

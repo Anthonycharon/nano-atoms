@@ -15,17 +15,22 @@ Output format:
   "experience_goal": "short statement of the intended user feeling and outcome",
   "primary_user_mindset": "who the page is speaking to right now",
   "visual_direction": "short art direction phrase",
+  "layout_archetype": "marketing | editorial | dashboard | centered-auth | workspace | immersive | auto",
+  "theme_mode": "light | dark | mixed | auto",
+  "color_story": "short phrase describing the palette and contrast",
   "layout_density": "airy | balanced | compact",
   "tone_keywords": ["keyword", "keyword"],
+  "style_constraints": ["explicit visual rules to preserve"],
   "section_recommendations": ["hero", "feature-grid"],
   "quality_checklist": ["specific quality rule", "specific quality rule"],
   "avoid_patterns": ["pattern to avoid", "pattern to avoid"]
 }
 
 Rules:
-- Focus on first-pass quality, clarity, hierarchy, and polish.
+- Respect explicit visual directions from the user. If they ask for black, dark, monochrome, glass, neon, brutalist, playful, or editorial, preserve that direction.
+- Do not collapse every request into the same bright SaaS style.
+- Choose one layout archetype that matches the job of the first page. Blogs and reading-focused products should lean editorial. Marketing and launch pages should lean marketing or immersive. Internal tools, assistants, and operator consoles should lean workspace or dashboard. Only use centered-auth when the main page is truly a sign-in or sign-up flow.
 - Recommend sections that make the generated result look intentional and product-ready.
-- Avoid generic filler, repetitive cards, and placeholder-heavy layouts.
 - Keep the brief practical so downstream agents can use it immediately."""
 
 

@@ -352,7 +352,7 @@ export default function LandingPage() {
           }`}
         >
           {[
-            ["更高质量", "Design Director + Quality Guardian 让首版结果更完整。"],
+            ["更高质量", "Design Director + 质量守护，让首版结果更完整。"],
             ["更可控", "支持局部重生成，不必每次都推翻整版应用。"],
             ["更有上下文", "支持上传图片、PDF、CSV 等素材参与生成。"],
           ].map(([title, desc]) => (
