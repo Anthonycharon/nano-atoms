@@ -95,6 +95,8 @@ def _normalize_schema(schema: dict[str, Any], fixes: list[str]) -> dict[str, Any
         for index, page in enumerate(pages)
     ]
     payload["navigation"] = _coerce_links(payload.get("navigation"), fixes, "navigation")
+    payload["navigation"] = _normalize_navigation(payload["navigation"], payload["pages"])
+    _ensure_site_shell(payload, fixes)
 
     data_models = payload.get("data_models")
     if not isinstance(data_models, list):
@@ -560,6 +562,114 @@ def _coerce_links(raw_links: Any, fixes: list[str], owner: str) -> list[dict[str
         else:
             fixes.append(f"{owner} links[{index}] was dropped because it was not renderable")
     return links
+
+
+def _is_primary_route(route: object) -> bool:
+    return isinstance(route, str) and route.startswith("/") and ":" not in route and "*" not in route
+
+
+def _normalize_navigation(
+    raw_links: list[dict[str, str]],
+    pages: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    primary_pages = [page for page in pages if _is_primary_route(page.get("route"))]
+    page_lookup = {
+        str(page.get("route")): str(page.get("name") or page.get("route") or "Page")
+        for page in primary_pages
+    }
+    navigation: list[dict[str, str]] = []
+    seen_routes: set[str] = set()
+
+    for item in raw_links:
+        route = str(item.get("route") or "").strip()
+        if route not in page_lookup or route in seen_routes:
+            continue
+        label = str(item.get("label") or page_lookup[route]).strip() or page_lookup[route]
+        navigation.append({"label": label, "route": route})
+        seen_routes.add(route)
+
+    if navigation:
+        return navigation
+
+    for page in primary_pages[:5]:
+        route = str(page.get("route"))
+        if route in seen_routes:
+            continue
+        navigation.append({"label": str(page.get("name") or route), "route": route})
+        seen_routes.add(route)
+    return navigation
+
+
+def _is_site_like_schema(schema: dict[str, Any]) -> bool:
+    pages = schema.get("pages")
+    if not isinstance(pages, list) or len(pages) < 2:
+        return False
+
+    layouts = {
+        _normalize_page_layout_archetype(page, schema.get("layout_archetype") or "workspace", page.get("components") or [])
+        for page in pages
+        if isinstance(page, dict)
+    }
+    if layouts and layouts.issubset({"centered-auth"}):
+        return False
+
+    navigation = schema.get("navigation")
+    if isinstance(navigation, list) and len(navigation) >= 2:
+        return True
+
+    return any(layout in {"marketing", "editorial", "immersive", "workspace", "dashboard"} for layout in layouts)
+
+
+def _ensure_site_shell(schema: dict[str, Any], fixes: list[str]) -> None:
+    if not _is_site_like_schema(schema):
+        return
+
+    pages = schema.get("pages")
+    navigation = schema.get("navigation")
+    if not isinstance(pages, list) or not isinstance(navigation, list) or not navigation:
+        return
+
+    title = str(schema.get("title") or "Generated App")
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_layout = _normalize_page_layout_archetype(
+            page,
+            schema.get("layout_archetype") or "workspace",
+            page.get("components") if isinstance(page.get("components"), list) else [],
+        )
+        if page_layout == "centered-auth":
+            continue
+
+        components = page.get("components")
+        if not isinstance(components, list):
+            continue
+
+        navbars = [
+            component
+            for component in components
+            if isinstance(component, dict) and component.get("type") == "navbar"
+        ]
+        if navbars:
+            for component in navbars:
+                props = component.get("props") if isinstance(component.get("props"), dict) else {}
+                props["title"] = title
+                props["links"] = copy.deepcopy(navigation)
+                component["props"] = props
+            continue
+
+        components.insert(
+            0,
+            {
+                "id": f"{page.get('id') or 'page'}_shared_nav",
+                "type": "navbar",
+                "props": {"title": title, "links": copy.deepcopy(navigation)},
+                "children": [],
+                "actions": [],
+                "style": {},
+            },
+        )
+        fixes.append(f"{page.get('id') or 'page'} received a shared site navbar")
 
 
 def _coerce_image_src(

@@ -93,6 +93,7 @@ export interface UITheme {
 export interface DesignBrief {
   experience_goal?: string;
   primary_user_mindset?: string;
+  content_language?: string;
   visual_direction?: string;
   layout_archetype?: LayoutArchetype | "auto";
   theme_mode?: "light" | "dark" | "mixed" | "auto";
@@ -124,6 +125,7 @@ export interface AppSchema {
   app_id: string;
   title: string;
   app_type: string;
+  content_language?: string;
   layout_archetype?: LayoutArchetype;
   pages: Page[];
   navigation?: NavigationItem[];
@@ -173,5 +175,6 @@ export interface GeneratedProjectArtifact {
   entry?: string;
   code_bundle: CodeBundle;
   quality_report?: QualityReport;
+  preview_html?: string;
   files: GeneratedFile[];
 }

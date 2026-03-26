@@ -4,7 +4,7 @@ import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .utils import extract_json, make_llm, notify_agent
+from .utils import build_content_language_instruction, extract_json, make_llm, notify_agent
 
 
 SYSTEM_PROMPT = """You are a senior design director for AI-generated products.
@@ -14,6 +14,7 @@ Output format:
 {
   "experience_goal": "short statement of the intended user feeling and outcome",
   "primary_user_mindset": "who the page is speaking to right now",
+  "content_language": "zh-CN | en-US | ja-JP | ko-KR",
   "visual_direction": "short art direction phrase",
   "layout_archetype": "marketing | editorial | dashboard | centered-auth | workspace | immersive | auto",
   "theme_mode": "light | dark | mixed | auto",
@@ -29,6 +30,7 @@ Output format:
 Rules:
 - Respect explicit visual directions from the user. If they ask for black, dark, monochrome, glass, neon, brutalist, playful, or editorial, preserve that direction.
 - Do not collapse every request into the same bright SaaS style.
+- Preserve the user's content language so downstream agents can keep page copy, labels, and CTA text consistent.
 - Choose one layout archetype that matches the job of the first page. Blogs and reading-focused products should lean editorial. Marketing and launch pages should lean marketing or immersive. Internal tools, assistants, and operator consoles should lean workspace or dashboard. Only use centered-auth when the main page is truly a sign-in or sign-up flow.
 - Recommend sections that make the generated result look intentional and product-ready.
 - Keep the brief practical so downstream agents can use it immediately."""
@@ -42,18 +44,25 @@ async def run_design_director_agent(state: dict) -> dict:
         prd_json = state.get("prd_json")
         if not isinstance(prd_json, dict) or not prd_json:
             raise ValueError("Design Director requires a valid PRD payload")
+        content_language = str(prd_json.get("content_language") or "en-US")
 
         llm = make_llm(temperature=0.35)
         response = await llm.ainvoke(
             [
                 SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=f"PRD JSON:\n{json.dumps(prd_json, ensure_ascii=False)}"),
+                HumanMessage(
+                    content=(
+                        f"{build_content_language_instruction(content_language)}\n"
+                        f"PRD JSON:\n{json.dumps(prd_json, ensure_ascii=False)}"
+                    )
+                ),
             ]
         )
 
         design_brief = extract_json(response.content)
         if not isinstance(design_brief, dict):
             raise ValueError("Design Director expected a JSON object response")
+        design_brief["content_language"] = str(design_brief.get("content_language") or content_language)
 
         sections = design_brief.get("section_recommendations", [])
         summary = (

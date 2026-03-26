@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { AppSchema, CodeBundle, LayoutArchetype, Page, UITheme } from "@/types/schema";
 import { renderComponent } from "./ComponentRegistry";
@@ -9,6 +9,8 @@ interface Props {
   schema: AppSchema;
   codeBundle: CodeBundle | null;
 }
+
+type ContentLanguage = "zh-CN" | "en-US" | "ja-JP" | "ko-KR";
 
 function hexToRgb(value?: string): [number, number, number] | null {
   if (!value || !value.startsWith("#")) return null;
@@ -237,6 +239,26 @@ function getThemeStyle(theme?: UITheme): CSSProperties {
   } as CSSProperties;
 }
 
+function isSiteLikeApp(schema: AppSchema): boolean {
+  const pages = Array.isArray(schema.pages) ? schema.pages : [];
+  if (pages.length < 2) return false;
+
+  const sharedNavigation = Array.isArray(schema.navigation) ? schema.navigation.length >= 2 : false;
+  if (sharedNavigation) return true;
+
+  return pages.some((page) =>
+    Array.isArray(page.components) && page.components.some((component) => component.type === "navbar")
+  );
+}
+
+function inferContentLanguage(schema: AppSchema): ContentLanguage {
+  const raw = String(schema.content_language ?? schema.design_brief?.content_language ?? "").trim().toLowerCase();
+  if (raw === "zh-cn" || raw === "ja-jp" || raw === "ko-kr") {
+    return raw as ContentLanguage;
+  }
+  return "en-US";
+}
+
 export default function AppRenderer({ schema, codeBundle }: Props) {
   const pages = Array.isArray(schema.pages) ? schema.pages : [];
   const [currentRoute, setCurrentRoute] = useState(pages[0]?.route ?? "/");
@@ -245,6 +267,12 @@ export default function AppRenderer({ schema, codeBundle }: Props) {
   );
   const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
   const [submitResults, setSubmitResults] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!pages.some((page) => page.route === currentRoute)) {
+      setCurrentRoute(pages[0]?.route ?? "/");
+    }
+  }, [currentRoute, pages]);
 
   const navigate = useCallback(
     (route: string) => {
@@ -274,15 +302,19 @@ export default function AppRenderer({ schema, codeBundle }: Props) {
   }, []);
 
   const currentPage = pages.find((item) => item.route === currentRoute) ?? pages[0];
+  const layout = inferLayoutArchetype(schema, currentPage);
+  const contentLanguage = inferContentLanguage(schema);
 
   if (!currentPage) {
-    return <div className="p-8 text-sm text-gray-400">No renderable page</div>;
+    return <div className="p-8 text-sm text-gray-400">{contentLanguage === "zh-CN" ? "当前没有可渲染页面" : "No renderable page"}</div>;
   }
 
   const ctx = {
     state: appState,
     setState,
     currentPage: currentRoute,
+    layoutArchetype: layout,
+    contentLanguage,
     navigate,
     formData,
     setFormField,
@@ -291,11 +323,11 @@ export default function AppRenderer({ schema, codeBundle }: Props) {
 
   const components = Array.isArray(currentPage.components) ? currentPage.components : [];
   const stackClass = getDensityClass(schema.ui_theme?.density ?? "balanced");
-  const layout = inferLayoutArchetype(schema, currentPage);
   const themeStyle = {
     ...getThemeStyle(schema.ui_theme),
     ...getLayoutVars(layout),
   };
+  const showPageDots = pages.length > 1 && !isSiteLikeApp(schema);
 
   return (
     <div className="min-h-full" style={themeStyle}>
@@ -316,12 +348,12 @@ export default function AppRenderer({ schema, codeBundle }: Props) {
               boxShadow: "var(--na-shadow)",
             }}
           >
-            Submitted successfully
+            {contentLanguage === "zh-CN" ? "提交成功" : "Submitted successfully"}
           </div>
         ) : null
       )}
 
-      {pages.length > 1 && (
+      {showPageDots && (
         <div
           className="fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border px-3 py-2"
           style={{

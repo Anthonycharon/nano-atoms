@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import re
 from typing import Any
@@ -99,27 +100,39 @@ async def enrich_schema_with_generated_images(
     actionable = targets[:limit]
     generated = 0
     errors: list[str] = []
+    image_concurrency = max(1, min(settings.OPENAI_IMAGE_CONCURRENCY, len(actionable) or 1))
+    request_timeout = max(30, settings.OPENAI_TIMEOUT_SECONDS)
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        for target in actionable:
-            try:
-                prompt = _build_image_prompt(
-                    project_prompt=project_prompt,
-                    app_schema=schema,
-                    page_name=target["page_name"],
-                    component=target["component"],
-                )
-                size = _pick_image_size(target["component"])
-                src = await _generate_image(
-                    client=client,
-                    api_key=api_key,
-                    prompt=prompt,
-                    size=size,
-                )
-                target["component"]["props"][target["prop_key"]] = src
-                generated += 1
-            except Exception as exc:
-                errors.append(f"{target['component']['id']}: {exc}")
+    async with httpx.AsyncClient(timeout=float(request_timeout)) as client:
+        semaphore = asyncio.Semaphore(image_concurrency)
+
+        async def generate_target(target: dict[str, Any]) -> tuple[dict[str, Any], str | None, str | None]:
+            async with semaphore:
+                try:
+                    prompt = _build_image_prompt(
+                        project_prompt=project_prompt,
+                        app_schema=schema,
+                        page_name=target["page_name"],
+                        component=target["component"],
+                    )
+                    size = _pick_image_size(target["component"])
+                    src = await _generate_image(
+                        client=client,
+                        api_key=api_key,
+                        prompt=prompt,
+                        size=size,
+                    )
+                    return target, src, None
+                except Exception as exc:
+                    return target, None, f"{target['component']['id']}: {exc}"
+
+        results = await asyncio.gather(*(generate_target(target) for target in actionable))
+        for target, src, error in results:
+            if error:
+                errors.append(error)
+                continue
+            target["component"]["props"][target["prop_key"]] = src
+            generated += 1
 
     omitted = _strip_unresolved_images(schema)
     summary = _build_result_summary(generated, omitted)

@@ -17,6 +17,7 @@ from app.services.code_export import build_project_artifact
 from app.services.image_generation import enrich_schema_with_generated_images
 from app.services.preview_repair import repair_preview_payload
 from app.services.quality_guardian import run_quality_guardian
+from app.services.site_codegen_service import generate_freeform_site_pack
 
 
 def _has_renderable_schema(app_schema: object) -> bool:
@@ -184,10 +185,17 @@ async def run_generation(
         if project_assets:
             repaired_schema = inject_project_assets_into_schema(repaired_schema, project_assets)
 
+        freeform_site_pack = await generate_freeform_site_pack(
+            prompt=prompt,
+            app_type=app_type,
+            app_schema=repaired_schema,
+            code_bundle=repaired_bundle,
+        )
         code_artifact = build_project_artifact(
             prompt,
             repaired_schema,
             repaired_bundle,
+            freeform_site=freeform_site_pack,
         )
         app_schema_payload, code_artifact, quality_report = run_quality_guardian(
             repaired_schema,

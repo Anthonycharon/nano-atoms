@@ -3,7 +3,7 @@
 import { useState } from "react";
 import AppRenderer from "@/components/renderer/AppRenderer";
 import CodePanel from "@/components/workspace/CodePanel";
-import { extractCodeBundle } from "@/lib/codeArtifacts";
+import { extractCodeBundle, parseCodeArtifact } from "@/lib/codeArtifacts";
 import { useThemeStore } from "@/stores/themeStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import type { AppSchema, QualityReport } from "@/types/schema";
@@ -135,7 +135,9 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
   const { previewDevice, setPreviewDevice } = useWorkspaceStore();
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const schema = parseSchema(schemaJson);
+  const artifact = parseCodeArtifact(codeJson, schemaJson);
   const codeBundle = extractCodeBundle(codeJson);
+  const previewHtml = artifact?.preview_html ?? null;
   const qualityReport = schema?.quality_report ?? null;
   const isCyber = theme === "cyber";
 
@@ -284,7 +286,16 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
                   maxHeight: "100%",
                 }}
               >
-                <AppRenderer schema={schema} codeBundle={codeBundle} />
+                {previewHtml ? (
+                  <iframe
+                    title="generated-site-preview"
+                    srcDoc={previewHtml}
+                    sandbox="allow-scripts allow-forms"
+                    className="h-full w-full border-0 bg-white"
+                  />
+                ) : (
+                  <AppRenderer schema={schema} codeBundle={codeBundle} />
+                )}
               </div>
             )}
           </div>

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppRenderer from "@/components/renderer/AppRenderer";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
-import { extractCodeBundle } from "@/lib/codeArtifacts";
+import { extractCodeBundle, parseCodeArtifact } from "@/lib/codeArtifacts";
 import { useThemeStore } from "@/stores/themeStore";
 import type { AppSchema } from "@/types/schema";
 
@@ -75,7 +75,9 @@ export default function PublicAppPageClient({ params }: Props) {
   }
 
   const schema: AppSchema = JSON.parse(data.schema_json);
+  const artifact = parseCodeArtifact(data.code_json, data.schema_json);
   const codeBundle = extractCodeBundle(data.code_json);
+  const previewHtml = artifact?.preview_html ?? null;
 
   return (
     <div
@@ -127,7 +129,16 @@ export default function PublicAppPageClient({ params }: Props) {
       </div>
 
       <div className="relative z-10">
-        <AppRenderer schema={schema} codeBundle={codeBundle} />
+        {previewHtml ? (
+          <iframe
+            title="published-app-preview"
+            srcDoc={previewHtml}
+            sandbox="allow-scripts allow-forms"
+            className="min-h-[calc(100vh-56px)] w-full border-0 bg-white"
+          />
+        ) : (
+          <AppRenderer schema={schema} codeBundle={codeBundle} />
+        )}
       </div>
     </div>
   );

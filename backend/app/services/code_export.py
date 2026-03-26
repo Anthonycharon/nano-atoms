@@ -1,11 +1,15 @@
-"""Build a human-readable static project export from schema + code bundle."""
+"""Build a richer multi-page static website export from schema + code bundle."""
 
 from __future__ import annotations
 
 import json
 import re
+from html import escape
 from typing import Any
 from urllib.parse import quote
+
+
+SUPPORTED_LAYOUTS = {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}
 
 
 def _slugify(value: str) -> str:
@@ -13,8 +17,25 @@ def _slugify(value: str) -> str:
     return text.strip("-") or "nano-atoms-app"
 
 
+def _safe_id(value: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip())
+    return text.strip("-") or "block"
+
+
 def _json_text(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _json_script(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+def _escape_text(value: Any) -> str:
+    return escape(str(value or ""))
+
+
+def _escape_attr(value: Any) -> str:
+    return escape(str(value or ""), quote=True)
 
 
 def _hex_to_rgb(value: str | None) -> tuple[int, int, int] | None:
@@ -54,13 +75,13 @@ def _infer_theme_mode(theme: dict[str, Any]) -> str:
 
 
 def _infer_layout_archetype(app_schema: dict[str, Any], page: dict[str, Any] | None = None) -> str:
-    raw_value = str((page or {}).get("layout_archetype") or app_schema.get("layout_archetype") or "").strip().lower()
-    if raw_value in {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}:
-        return raw_value
+    raw = str((page or {}).get("layout_archetype") or app_schema.get("layout_archetype") or "").strip().lower()
+    if raw in SUPPORTED_LAYOUTS:
+        return raw
 
     design_brief = app_schema.get("design_brief") if isinstance(app_schema.get("design_brief"), dict) else {}
     brief_layout = str(design_brief.get("layout_archetype") or "").strip().lower()
-    if brief_layout in {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}:
+    if brief_layout in SUPPORTED_LAYOUTS:
         return brief_layout
 
     app_type = str(app_schema.get("app_type") or "").lower()
@@ -77,6 +98,23 @@ def _infer_layout_archetype(app_schema: dict[str, Any], page: dict[str, Any] | N
     return "workspace"
 
 
+def _content_language(app_schema: dict[str, Any]) -> str:
+    language = str(
+        app_schema.get("content_language")
+        or (app_schema.get("design_brief") or {}).get("content_language")
+        or ""
+    ).strip()
+    return language or "en-US"
+
+
+def _is_chinese(language: str) -> bool:
+    return language.lower() == "zh-cn"
+
+
+def _localized(language: str, zh: str, en: str) -> str:
+    return zh if _is_chinese(language) else en
+
+
 def _image_placeholder_data_uri(label: str = "Preview Image") -> str:
     safe_label = (label or "Preview Image").strip()[:48] or "Preview Image"
     svg = f"""
@@ -91,7 +129,7 @@ def _image_placeholder_data_uri(label: str = "Preview Image") -> str:
   <rect x="120" y="120" width="960" height="480" rx="28" fill="#FFFFFF" stroke="#C7D8F7" stroke-width="4"/>
   <circle cx="330" cy="300" r="72" fill="#CFE0FF"/>
   <path d="M210 520L410 360L560 470L710 320L990 520H210Z" fill="#DCE8FF"/>
-  <text x="600" y="592" text-anchor="middle" fill="#2D4C7C" font-size="36" font-family="Arial, sans-serif">{safe_label}</text>
+  <text x="600" y="592" text-anchor="middle" fill="#2D4C7C" font-size="36" font-family="Arial, sans-serif">{escape(safe_label)}</text>
 </svg>
 """.strip()
     return f"data:image/svg+xml;charset=UTF-8,{quote(svg)}"
@@ -111,226 +149,801 @@ def _infer_language(path: str) -> str:
     return "text"
 
 
-def _build_index_html(title: str) -> str:
+def _theme_tokens(app_schema: dict[str, Any]) -> dict[str, str]:
+    theme = app_schema.get("ui_theme") if isinstance(app_schema.get("ui_theme"), dict) else {}
+    mode = _infer_theme_mode(theme)
+    primary = str(theme.get("primary_color") or "#4f46e5")
+    secondary = str(theme.get("secondary_color") or "#22c55e")
+    background = str(theme.get("background_color") or ("#020617" if mode == "dark" else "#f8fafc"))
+    text = str(theme.get("text_color") or ("#f8fafc" if mode == "dark" else "#0f172a"))
+    surface = str(theme.get("surface_color") or ("rgba(15,23,42,0.78)" if mode == "dark" else "rgba(255,255,255,0.88)"))
+    surface_text = str(theme.get("surface_text_color") or text)
+    border = str(theme.get("border_color") or ("rgba(148,163,184,0.18)" if mode == "dark" else "rgba(148,163,184,0.18)"))
+    muted = str(theme.get("muted_text_color") or ("rgba(226,232,240,0.74)" if mode == "dark" else "#475569"))
+    subtle = str(theme.get("subtle_surface_color") or ("rgba(30,41,59,0.7)" if mode == "dark" else "rgba(255,255,255,0.62)"))
+    accent_soft = _hex_to_rgba(primary, 0.2 if mode == "dark" else 0.12, "rgba(79,70,229,0.12)")
+    secondary_soft = _hex_to_rgba(secondary, 0.22 if mode == "dark" else 0.14, "rgba(34,197,94,0.14)")
+    shadow = "0 24px 80px rgba(2,6,23,0.36)" if mode == "dark" else "0 24px 80px rgba(15,23,42,0.12)"
+    font_family = str(theme.get("font_family") or '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif')
+    radius = str(theme.get("border_radius") or "20px")
+    page_background = str(
+        theme.get("page_background")
+        or (
+            f"radial-gradient(circle at top, #0f172a 0%, {background} 36%, #020617 100%)"
+            if mode == "dark"
+            else f"radial-gradient(circle at top, #eff6ff 0%, {background} 38%, #ffffff 100%)"
+        )
+    )
+    return {
+        "mode": mode,
+        "primary": primary,
+        "secondary": secondary,
+        "background": background,
+        "text": text,
+        "surface": surface,
+        "surface_text": surface_text,
+        "border": border,
+        "muted": muted,
+        "subtle": subtle,
+        "accent_soft": accent_soft,
+        "secondary_soft": secondary_soft,
+        "shadow": shadow,
+        "font_family": font_family,
+        "radius": radius,
+        "page_background": page_background,
+    }
+
+
+def _page_file_name(route: str, index: int) -> str:
+    normalized = route.strip() or "/"
+    if normalized == "/":
+        return "home.html"
+    slug = _slugify(normalized.strip("/").replace("/", "-"))
+    return f"{slug or f'page-{index + 1}'}.html"
+
+
+def _nav_target(route: str) -> str:
+    return route if route.startswith("/") else f"/{route}"
+
+
+def _action_route(node: dict[str, Any]) -> str | None:
+    actions = node.get("actions") if isinstance(node.get("actions"), list) else []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if action.get("type") == "navigate":
+            payload = action.get("payload") if isinstance(action.get("payload"), dict) else {}
+            route = payload.get("route")
+            if isinstance(route, str) and route.strip():
+                return _nav_target(route.strip())
+    return None
+
+
+def _render_children(children: list[Any], app_schema: dict[str, Any], page: dict[str, Any]) -> str:
+    return "".join(_render_component(child, app_schema, page) for child in children if isinstance(child, dict))
+
+
+def _render_button(label: str, route: str | None, variant: str = "primary") -> str:
+    button_class = "na-btn" if variant == "primary" else "na-btn na-btn-secondary"
+    if route:
+        return f'<button type="button" class="{button_class}" data-route="{_escape_attr(route)}">{_escape_text(label)}</button>'
+    return f'<button type="button" class="{button_class}">{_escape_text(label)}</button>'
+
+
+def _render_component(node: dict[str, Any], app_schema: dict[str, Any], page: dict[str, Any]) -> str:
+    component_type = str(node.get("type") or "text")
+    props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    children = node.get("children") if isinstance(node.get("children"), list) else []
+    route = _action_route(node)
+    component_id = _safe_id(str(node.get("id") or component_type))
+    language = _content_language(app_schema)
+    image_fallback = _image_placeholder_data_uri(str(props.get("alt") or props.get("image_alt") or props.get("title") or "Preview image"))
+
+    if component_type == "heading":
+        return f'<section class="na-section na-copy"><h2 id="{component_id}" class="na-heading">{_escape_text(props.get("text") or props.get("children") or _localized(language, "标题", "Heading"))}</h2></section>'
+
+    if component_type == "text":
+        return f'<section class="na-section na-copy"><p id="{component_id}" class="na-text">{_escape_text(props.get("text") or props.get("children") or "")}</p></section>'
+
+    if component_type == "button":
+        return f'<section class="na-section na-copy">{_render_button(str(props.get("label") or props.get("text") or _localized(language, "按钮", "Button")), route, "primary")}</section>'
+
+    if component_type == "input":
+        return (
+            '<div class="na-field">'
+            f'<label class="na-label" for="{component_id}">{_escape_text(props.get("label") or props.get("name") or _localized(language, "字段", "Field"))}</label>'
+            f'<input id="{component_id}" class="na-input" type="{_escape_attr(props.get("type") or "text")}" placeholder="{_escape_attr(props.get("placeholder") or "")}" />'
+            "</div>"
+        )
+
+    if component_type == "select":
+        options = props.get("options") if isinstance(props.get("options"), list) else []
+        options_markup = "".join(
+            f'<option value="{_escape_attr(item)}">{_escape_text(item)}</option>' for item in options
+        )
+        return (
+            '<div class="na-field">'
+            f'<label class="na-label" for="{component_id}">{_escape_text(props.get("label") or props.get("name") or _localized(language, "选项", "Option"))}</label>'
+            f'<select id="{component_id}" class="na-input"><option value="">{_escape_text(props.get("placeholder") or _localized(language, "请选择", "Select an option"))}</option>{options_markup}</select>'
+            "</div>"
+        )
+
+    if component_type == "form":
+        return (
+            f'<section class="na-section"><form class="na-form na-panel" data-form-id="{_escape_attr(node.get("id") or component_id)}">'
+            f"{_render_children(children, app_schema, page)}"
+            f'<button type="submit" class="na-btn">{_localized(language, "提交", "Submit")}</button>'
+            "</form></section>"
+        )
+
+    if component_type == "card":
+        title = props.get("title")
+        content = props.get("content")
+        body = _render_children(children, app_schema, page) or f'<p class="na-text">{_escape_text(content or _localized(language, "内容待补充", "Content pending"))}</p>'
+        title_markup = f'<h3 class="na-card-title">{_escape_text(title)}</h3>' if title else ""
+        return f'<section class="na-section"><div class="na-panel na-card">{title_markup}{body}</div></section>'
+
+    if component_type == "stat-card":
+        return (
+            '<section class="na-section"><div class="na-panel na-stat">'
+            f'<div class="na-stat-label">{_escape_text(props.get("label") or _localized(language, "指标", "Metric"))}</div>'
+            f'<div class="na-stat-value">{_escape_text(props.get("value") or "--")}</div>'
+            f'<div class="na-stat-caption">{_escape_text(props.get("change") or "")}</div>'
+            "</div></section>"
+        )
+
+    if component_type == "table":
+        columns = props.get("columns") if isinstance(props.get("columns"), list) else []
+        rows = props.get("rows") if isinstance(props.get("rows"), list) else []
+        head = "".join(f"<th>{_escape_text(col)}</th>" for col in columns)
+        body_rows = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            body_rows.append("<tr>" + "".join(f"<td>{_escape_text(row.get(col) or '')}</td>" for col in columns) + "</tr>")
+        if not body_rows:
+            body_rows.append(f'<tr><td colspan="{max(len(columns), 1)}" class="na-empty-row">{_localized(language, "暂无数据", "No data yet")}</td></tr>')
+        return f'<section class="na-section"><div class="na-panel na-table-wrap"><table class="na-table"><thead><tr>{head}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div></section>'
+
+    if component_type == "navbar":
+        title = str(props.get("title") or app_schema.get("title") or "App")
+        links = props.get("links") if isinstance(props.get("links"), list) else []
+        links_markup = []
+        current_route = _nav_target(str(page.get("route") or "/"))
+        for item in links:
+            if not isinstance(item, dict):
+                continue
+            target_route = _nav_target(str(item.get("route") or "/"))
+            active = " is-active" if target_route == current_route else ""
+            links_markup.append(
+                f'<button type="button" class="na-nav-link{active}" data-route="{_escape_attr(target_route)}">{_escape_text(item.get("label") or item.get("text") or "Link")}</button>'
+            )
+        return f'<header class="na-header-shell"><div class="na-header-backdrop"></div><nav class="na-navbar"><button type="button" class="na-brand" data-route="/">{_escape_text(title)}</button><div class="na-nav-links">{"".join(links_markup)}</div></nav></header>'
+
+    if component_type == "tag":
+        return f'<span class="na-tag">{_escape_text(props.get("text") or props.get("label") or _localized(language, "标签", "Tag"))}</span>'
+
+    if component_type == "image":
+        src = str(props.get("src") or image_fallback)
+        alt = str(props.get("alt") or props.get("title") or _localized(language, "预览图", "Preview image"))
+        return f'<section class="na-section"><figure class="na-image-frame"><img src="{_escape_attr(src)}" alt="{_escape_attr(alt)}" onerror="this.src=\'{_escape_attr(image_fallback)}\'" /></figure></section>'
+
+    if component_type == "hero":
+        stats = props.get("stats") if isinstance(props.get("stats"), list) else []
+        stats_markup = "".join(
+            (
+                '<div class="na-hero-metric">'
+                f'<div class="na-hero-metric-value">{_escape_text(item.get("value") or "--")}</div>'
+                f'<div class="na-hero-metric-label">{_escape_text(item.get("label") or "")}</div>'
+                f'<div class="na-hero-metric-caption">{_escape_text(item.get("caption") or "")}</div>'
+                "</div>"
+            )
+            for item in stats
+            if isinstance(item, dict)
+        )
+        image_src = str(props.get("image_src") or image_fallback)
+        image_alt = str(props.get("image_alt") or props.get("title") or _localized(language, "主视觉", "Hero visual"))
+        actions = "".join(
+            [
+                _render_button(str(props.get("primary_cta_label") or _localized(language, "立即开始", "Get started")), str(props.get("primary_cta_route") or page.get("route") or "/"), "primary") if props.get("primary_cta_label") or props.get("primary_cta_route") else "",
+                _render_button(str(props.get("secondary_cta_label") or _localized(language, "了解更多", "Learn more")), str(props.get("secondary_cta_route") or page.get("route") or "/"), "secondary") if props.get("secondary_cta_label") or props.get("secondary_cta_route") else "",
+            ]
+        )
+        return f'<section class="na-section na-hero-section"><div class="na-hero-grid"><div class="na-hero-copy"><div class="na-kicker">{_escape_text(props.get("eyebrow") or page.get("name") or "")}</div><h1 class="na-display">{_escape_text(props.get("title") or app_schema.get("title") or _localized(language, "网站标题", "Website title"))}</h1><p class="na-hero-description">{_escape_text(props.get("description") or "")}</p><div class="na-actions">{actions}</div><div class="na-hero-metrics">{stats_markup}</div></div><div class="na-hero-visual"><img src="{_escape_attr(image_src)}" alt="{_escape_attr(image_alt)}" onerror="this.src=\'{_escape_attr(image_fallback)}\'" /></div></div></section>'
+
+    if component_type == "feature-grid":
+        items = props.get("items") if isinstance(props.get("items"), list) else []
+        columns = max(1, min(int(props.get("columns") or 3), 4))
+        items_markup = "".join(
+            (
+                '<article class="na-feature-item">'
+                f'<div class="na-feature-badge">{_escape_text(item.get("badge") or item.get("icon") or "")}</div>'
+                f'<h3 class="na-feature-title">{_escape_text(item.get("title") or "")}</h3>'
+                f'<p class="na-feature-description">{_escape_text(item.get("description") or "")}</p>'
+                '</article>'
+            )
+            for item in items
+            if isinstance(item, dict)
+        )
+        return f'<section class="na-section"><div class="na-copy-block"><div class="na-kicker">{_escape_text(page.get("name") or "")}</div><h2 class="na-section-title">{_escape_text(props.get("title") or _localized(language, "核心亮点", "Highlights"))}</h2><p class="na-section-description">{_escape_text(props.get("description") or "")}</p></div><div class="na-feature-grid na-cols-{columns}">{items_markup}</div></section>'
+
+    if component_type == "stats-band":
+        items = props.get("items") if isinstance(props.get("items"), list) else []
+        items_markup = "".join(
+            (
+                '<div class="na-stat-chip">'
+                f'<div class="na-stat-chip-value">{_escape_text(item.get("value") or "--")}</div>'
+                f'<div class="na-stat-chip-label">{_escape_text(item.get("label") or "")}</div>'
+                f'<div class="na-stat-chip-caption">{_escape_text(item.get("caption") or "")}</div>'
+                '</div>'
+            )
+            for item in items
+            if isinstance(item, dict)
+        )
+        return f'<section class="na-section"><div class="na-stat-band">{items_markup}</div></section>'
+
+    if component_type == "split-section":
+        bullets = props.get("bullets") if isinstance(props.get("bullets"), list) else []
+        bullets_markup = "".join(f"<li>{_escape_text(item)}</li>" for item in bullets)
+        reverse_class = " is-reverse" if props.get("reverse") else ""
+        image_src = str(props.get("image_src") or image_fallback)
+        image_alt = str(props.get("image_alt") or props.get("title") or _localized(language, "内容配图", "Section visual"))
+        actions = "".join(
+            [
+                _render_button(str(props.get("primary_cta_label") or _localized(language, "继续查看", "Continue")), str(props.get("primary_cta_route") or page.get("route") or "/"), "primary") if props.get("primary_cta_label") or props.get("primary_cta_route") else "",
+                _render_button(str(props.get("secondary_cta_label") or _localized(language, "查看详情", "See details")), str(props.get("secondary_cta_route") or page.get("route") or "/"), "secondary") if props.get("secondary_cta_label") or props.get("secondary_cta_route") else "",
+            ]
+        )
+        return f'<section class="na-section"><div class="na-split{reverse_class}"><div class="na-split-copy"><div class="na-kicker">{_escape_text(props.get("eyebrow") or page.get("name") or "")}</div><h2 class="na-section-title">{_escape_text(props.get("title") or _localized(language, "重点内容", "Key content"))}</h2><p class="na-section-description">{_escape_text(props.get("description") or "")}</p><ul class="na-bullets">{bullets_markup}</ul><div class="na-actions">{actions}</div></div><div class="na-split-visual"><img src="{_escape_attr(image_src)}" alt="{_escape_attr(image_alt)}" onerror="this.src=\'{_escape_attr(image_fallback)}\'" /></div></div></section>'
+
+    if component_type == "cta-band":
+        actions = "".join(
+            [
+                _render_button(str(props.get("primary_cta_label") or _localized(language, "立即开始", "Get started")), str(props.get("primary_cta_route") or page.get("route") or "/"), "primary") if props.get("primary_cta_label") or props.get("primary_cta_route") else "",
+                _render_button(str(props.get("secondary_cta_label") or _localized(language, "联系我们", "Contact us")), str(props.get("secondary_cta_route") or page.get("route") or "/"), "secondary") if props.get("secondary_cta_label") or props.get("secondary_cta_route") else "",
+            ]
+        )
+        return f'<section class="na-section"><div class="na-cta"><h2 class="na-cta-title">{_escape_text(props.get("title") or _localized(language, "准备继续了吗？", "Ready to continue?"))}</h2><p class="na-cta-description">{_escape_text(props.get("description") or "")}</p><div class="na-actions">{actions}</div></div></section>'
+
+    if component_type == "auth-card":
+        image_src = str(props.get("image_src") or image_fallback)
+        image_alt = str(props.get("image_alt") or props.get("title") or _localized(language, "账户视觉图", "Authentication visual"))
+        footer = ""
+        if props.get("footer_text"):
+            footer_text = _escape_text(props.get("footer_text"))
+            if props.get("footer_link_label") and props.get("footer_link_route"):
+                footer = f'<div class="na-auth-footer">{footer_text} <button type="button" class="na-inline-link" data-route="{_escape_attr(props.get("footer_link_route"))}">{_escape_text(props.get("footer_link_label"))}</button></div>'
+            else:
+                footer = f'<div class="na-auth-footer">{footer_text}</div>'
+        return f'<section class="na-section"><div class="na-auth-shell"><div class="na-auth-visual"><img src="{_escape_attr(image_src)}" alt="{_escape_attr(image_alt)}" onerror="this.src=\'{_escape_attr(image_fallback)}\'" /></div><div class="na-auth-body"><h2 class="na-section-title">{_escape_text(props.get("title") or _localized(language, "欢迎回来", "Welcome back"))}</h2><p class="na-section-description">{_escape_text(props.get("description") or "")}</p>{_render_children(children, app_schema, page)}{footer}</div></div></section>'
+
+    if component_type == "modal":
+        return f'<section class="na-section"><div class="na-panel na-card"><div class="na-kicker">{_localized(language, "弹窗内容", "Modal content")}</div>{_render_children(children, app_schema, page)}</div></section>'
+
+    return f'<section class="na-section na-copy"><p class="na-text">{_escape_text(props.get("text") or props.get("title") or "")}</p></section>'
+
+
+def _render_page_markup(app_schema: dict[str, Any], page: dict[str, Any]) -> str:
+    layout = _infer_layout_archetype(app_schema, page)
+    components = page.get("components") if isinstance(page.get("components"), list) else []
+    content = "".join(_render_component(node, app_schema, page) for node in components if isinstance(node, dict))
+    return f'<main class="na-page na-layout-{_escape_attr(layout)}" data-page-route="{_escape_attr(page.get("route") or "/")}">{content}</main>'
+
+
+def _build_styles_css(app_schema: dict[str, Any]) -> str:
+    tokens = _theme_tokens(app_schema)
+    return f""":root {{
+  --na-primary: {tokens["primary"]};
+  --na-secondary: {tokens["secondary"]};
+  --na-bg: {tokens["background"]};
+  --na-text: {tokens["text"]};
+  --na-surface: {tokens["surface"]};
+  --na-surface-text: {tokens["surface_text"]};
+  --na-border: {tokens["border"]};
+  --na-muted: {tokens["muted"]};
+  --na-subtle: {tokens["subtle"]};
+  --na-accent-soft: {tokens["accent_soft"]};
+  --na-secondary-soft: {tokens["secondary_soft"]};
+  --na-shadow: {tokens["shadow"]};
+  --na-radius: {tokens["radius"]};
+  --na-page-bg: {tokens["page_background"]};
+  --na-font: {tokens["font_family"]};
+}}
+* {{ box-sizing: border-box; }}
+html, body {{ margin: 0; min-height: 100%; }}
+body {{
+  background: var(--na-page-bg);
+  color: var(--na-text);
+  font-family: var(--na-font);
+}}
+button, input, select {{ font: inherit; }}
+.na-site-shell {{ min-height: 100vh; padding: 0 0 5rem; }}
+.na-page {{ width: min(100%, 1320px); margin: 0 auto; padding: 2rem 1.25rem; }}
+.na-layout-marketing, .na-layout-immersive {{ width: min(100%, 1440px); }}
+.na-layout-editorial {{ width: min(100%, 900px); }}
+.na-layout-centered-auth {{
+  width: min(100%, 980px);
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}}
+.na-section {{ margin-top: 1.25rem; }}
+.na-copy {{ width: min(100%, 840px); }}
+.na-panel,
+.na-navbar,
+.na-hero-grid,
+.na-feature-item,
+.na-stat-chip,
+.na-split,
+.na-cta,
+.na-auth-shell,
+.na-image-frame {{
+  background: var(--na-surface);
+  color: var(--na-surface-text);
+  border: 1px solid var(--na-border);
+  border-radius: var(--na-radius);
+  box-shadow: var(--na-shadow);
+}}
+.na-panel,
+.na-navbar,
+.na-split,
+.na-cta,
+.na-auth-shell {{ padding: 1.5rem; }}
+.na-heading,
+.na-display,
+.na-section-title,
+.na-cta-title {{ margin: 0; color: var(--na-surface-text); }}
+.na-heading {{ font-size: clamp(1.8rem, 4vw, 2.6rem); }}
+.na-display {{
+  font-size: clamp(2.8rem, 8vw, 5.5rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+}}
+.na-text,
+.na-hero-description,
+.na-section-description,
+.na-cta-description,
+.na-auth-footer,
+.na-hero-metric-caption,
+.na-stat-chip-caption {{
+  margin: 0;
+  color: var(--na-muted);
+  line-height: 1.75;
+}}
+.na-btn,
+.na-btn-secondary,
+.na-inline-link,
+.na-brand,
+.na-nav-link {{ border: 0; background: none; cursor: pointer; }}
+.na-btn,
+.na-btn-secondary {{
+  padding: 0.85rem 1.2rem;
+  border-radius: 999px;
+  font-weight: 700;
+}}
+.na-btn {{ background: linear-gradient(135deg, var(--na-primary), var(--na-secondary)); color: #fff; }}
+.na-btn-secondary {{ background: var(--na-accent-soft); color: var(--na-surface-text); }}
+.na-label {{
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--na-muted);
+  font-size: 0.94rem;
+}}
+.na-field + .na-field {{ margin-top: 1rem; }}
+.na-input {{
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border-radius: calc(var(--na-radius) - 6px);
+  border: 1px solid var(--na-border);
+  background: rgba(255,255,255,0.02);
+  color: var(--na-surface-text);
+}}
+.na-form {{ display: flex; flex-direction: column; gap: 1rem; }}
+.na-card-title, .na-feature-title {{ margin: 0; font-size: 1.1rem; font-weight: 800; }}
+.na-stat-value, .na-stat-chip-value, .na-hero-metric-value {{
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 900;
+}}
+.na-stat-label, .na-stat-chip-label, .na-hero-metric-label {{
+  margin-top: 0.35rem;
+  font-size: 0.92rem;
+  color: var(--na-muted);
+}}
+.na-table-wrap {{ overflow: hidden; }}
+.na-table {{ width: 100%; border-collapse: collapse; }}
+.na-table th, .na-table td {{
+  padding: 0.95rem 0.9rem;
+  text-align: left;
+  border-bottom: 1px solid var(--na-border);
+}}
+.na-empty-row {{ color: var(--na-muted); text-align: center; }}
+.na-header-shell {{ position: sticky; top: 0; z-index: 20; padding: 1.25rem 1.25rem 0; }}
+.na-header-backdrop {{
+  position: absolute;
+  inset: 0;
+  border-radius: var(--na-radius);
+  background: rgba(15, 23, 42, 0.02);
+  backdrop-filter: blur(16px);
+}}
+.na-navbar {{
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}}
+.na-brand {{ font-size: 1rem; font-weight: 900; color: var(--na-surface-text); }}
+.na-nav-links {{ display: flex; flex-wrap: wrap; gap: 0.75rem; }}
+.na-nav-link {{
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  color: var(--na-muted);
+}}
+.na-nav-link.is-active {{ background: var(--na-accent-soft); color: var(--na-primary); }}
+.na-tag,
+.na-kicker {{
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background: var(--na-accent-soft);
+  color: var(--na-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}}
+.na-image-frame,
+.na-hero-visual,
+.na-split-visual,
+.na-auth-visual {{ overflow: hidden; }}
+.na-image-frame img,
+.na-hero-visual img,
+.na-split-visual img,
+.na-auth-visual img {{ display: block; width: 100%; height: 100%; object-fit: cover; }}
+.na-hero-grid,
+.na-split,
+.na-auth-shell {{ display: grid; gap: 1.5rem; }}
+.na-hero-copy,
+.na-split-copy,
+.na-auth-body,
+.na-copy-block {{ display: flex; flex-direction: column; gap: 1rem; }}
+.na-actions {{ display: flex; flex-wrap: wrap; gap: 0.75rem; }}
+.na-hero-metrics,
+.na-feature-grid,
+.na-stat-band {{ display: grid; gap: 1rem; }}
+.na-hero-metric,
+.na-stat-chip {{
+  padding: 1rem;
+  border-radius: calc(var(--na-radius) - 6px);
+  background: var(--na-subtle);
+}}
+.na-feature-grid.na-cols-2 {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+.na-feature-grid.na-cols-3 {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+.na-feature-grid.na-cols-4 {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+.na-feature-item {{ padding: 1.25rem; }}
+.na-feature-badge {{ font-size: 0.9rem; color: var(--na-primary); margin-bottom: 0.75rem; }}
+.na-feature-description {{ margin: 0.7rem 0 0; color: var(--na-muted); line-height: 1.7; }}
+.na-bullets {{
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}}
+.na-bullets li {{
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  line-height: 1.7;
+}}
+.na-bullets li::before {{
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+  background: var(--na-primary);
+  flex: none;
+}}
+.na-split.is-reverse {{ direction: rtl; }}
+.na-split.is-reverse > * {{ direction: ltr; }}
+.na-cta {{
+  background: linear-gradient(160deg, rgba(15,23,42,0.96), rgba(30,41,59,0.95));
+  color: #fff;
+}}
+.na-cta-title, .na-cta-description {{ color: #fff; }}
+.na-cta-description {{ opacity: 0.78; }}
+.na-auth-shell {{ align-items: stretch; }}
+.na-auth-visual {{
+  min-height: 280px;
+  background: linear-gradient(145deg, rgba(15,23,42,0.96), rgba(30,41,59,0.95));
+}}
+.na-inline-link {{ padding: 0; color: var(--na-primary); font-weight: 800; }}
+.na-toast {{
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--na-primary), var(--na-secondary));
+  color: #fff;
+  box-shadow: var(--na-shadow);
+  z-index: 50;
+}}
+.na-preview-shell {{ min-height: 100vh; }}
+.na-empty-state {{
+  width: min(100%, 820px);
+  margin: 4rem auto;
+  padding: 2rem;
+  border-radius: var(--na-radius);
+  background: var(--na-surface);
+  border: 1px solid var(--na-border);
+  color: var(--na-muted);
+  box-shadow: var(--na-shadow);
+}}
+@media (min-width: 900px) {{
+  .na-hero-grid {{
+    grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+    align-items: center;
+  }}
+  .na-split,
+  .na-auth-shell {{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }}
+  .na-hero-metrics,
+  .na-stat-band {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+}}
+@media (max-width: 899px) {{
+  .na-feature-grid.na-cols-2,
+  .na-feature-grid.na-cols-3,
+  .na-feature-grid.na-cols-4 {{ grid-template-columns: 1fr; }}
+  .na-page {{ padding: 1.25rem 1rem 3rem; }}
+}}
+"""
+
+
+def _build_runtime_js() -> str:
+    return """(() => {
+  const dataNode = document.getElementById("na-site-data");
+  if (!dataNode) return;
+
+  let siteData = null;
+  try {
+    siteData = JSON.parse(dataNode.textContent || "{}");
+  } catch (error) {
+    console.error("Failed to parse site data", error);
+    return;
+  }
+
+  const previewRoot = document.getElementById("na-preview-root");
+  const routeMap = siteData.route_map || {};
+  const pages = Array.isArray(siteData.pages) ? siteData.pages : [];
+  let currentRoute = window.location.hash ? decodeURIComponent(window.location.hash.slice(1)) : (siteData.current_route || siteData.default_route || "/");
+  let toastTimer = null;
+
+  function showToast(message) {
+    const existing = document.querySelector(".na-toast");
+    if (existing) existing.remove();
+    const toast = document.createElement("div");
+    toast.className = "na-toast";
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.remove(), 2200);
+  }
+
+  function bindInteractions(scope) {
+    scope.querySelectorAll("[data-route]").forEach((element) => {
+      element.addEventListener("click", (event) => {
+        event.preventDefault();
+        const nextRoute = element.getAttribute("data-route");
+        if (!nextRoute) return;
+        if (siteData.preview) {
+          currentRoute = nextRoute;
+          window.location.hash = encodeURIComponent(nextRoute);
+          renderPreview();
+          return;
+        }
+        const target = routeMap[nextRoute];
+        if (target) window.location.href = target;
+      });
+    });
+
+    scope.querySelectorAll("[data-form-id]").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        showToast(siteData.submit_message || "Submitted successfully");
+      });
+    });
+  }
+
+  function renderPreview() {
+    if (!previewRoot) return;
+    const page = pages.find((item) => item.route === currentRoute) || pages[0];
+    if (!page) {
+      previewRoot.innerHTML = `<div class="na-empty-state">${siteData.empty_message || "No renderable page"}</div>`;
+      return;
+    }
+    document.title = `${siteData.title || "Nano Atoms"} - ${page.name || page.route}`;
+    previewRoot.innerHTML = `<div class="na-site-shell">${page.html || ""}</div>`;
+    bindInteractions(previewRoot);
+  }
+
+  if (siteData.preview) {
+    renderPreview();
+    window.addEventListener("hashchange", () => {
+      currentRoute = window.location.hash ? decodeURIComponent(window.location.hash.slice(1)) : (siteData.default_route || "/");
+      renderPreview();
+    });
+    return;
+  }
+
+  bindInteractions(document);
+})();"""
+
+
+def _build_schema_js(app_schema: dict[str, Any], code_bundle: dict[str, Any], site_data: dict[str, Any]) -> str:
+    site_meta = {
+        "title": site_data.get("title"),
+        "default_route": site_data.get("default_route"),
+        "route_map": site_data.get("route_map"),
+        "pages": [
+            {
+                "name": page.get("name"),
+                "route": page.get("route"),
+                "path": page.get("path"),
+                "layout": page.get("layout"),
+            }
+            for page in site_data.get("pages", [])
+            if isinstance(page, dict)
+        ],
+    }
+    return (
+        f"export const appSchema = {_json_text(app_schema)};\\n\\n"
+        f"export const codeBundle = {_json_text(code_bundle)};\\n\\n"
+        f"export const siteMeta = {_json_text(site_meta)};\\n"
+    )
+
+
+def _build_page_boot_data(
+    title: str,
+    language: str,
+    current_route: str,
+    default_route: str,
+    route_map: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "preview": False,
+        "title": title,
+        "language": language,
+        "current_route": current_route,
+        "default_route": default_route,
+        "route_map": route_map,
+        "submit_message": _localized(language, "提交成功", "Submitted successfully"),
+    }
+
+
+def _build_page_snapshot_html(
+    *,
+    title: str,
+    language: str,
+    page_markup: str,
+    route_map: dict[str, str],
+    default_route: str,
+    current_route: str,
+    styles_href: str,
+    script_src: str,
+) -> str:
+    boot_data = _build_page_boot_data(
+        title=title,
+        language=language,
+        current_route=current_route,
+        default_route=default_route,
+        route_map=route_map,
+    )
     return f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{_escape_attr(language)}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title}</title>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <title>{_escape_text(title)}</title>
+    <link rel="stylesheet" href="{_escape_attr(styles_href)}" />
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="./src/app.js"></script>
+    <div class="na-site-shell">
+      {page_markup}
+    </div>
+    <script id="na-site-data" type="application/json">{_json_script(boot_data)}</script>
+    <script type="module" src="{_escape_attr(script_src)}"></script>
   </body>
 </html>
 """
 
 
-def _build_schema_js(app_schema: dict[str, Any], code_bundle: dict[str, Any]) -> str:
-    return (
-        f"export const appSchema = {_json_text(app_schema)};\n\n"
-        f"export const codeBundle = {_json_text(code_bundle)};\n"
+def _build_index_html(
+    title: str,
+    language: str,
+    page_markup: str,
+    route_map: dict[str, str],
+    default_route: str,
+    current_route: str,
+) -> str:
+    return _build_page_snapshot_html(
+        title=title,
+        language=language,
+        page_markup=page_markup,
+        route_map=route_map,
+        default_route=default_route,
+        current_route=current_route,
+        styles_href="./src/styles.css",
+        script_src="./src/app.js",
     )
 
 
-def _build_styles_css(app_schema: dict[str, Any]) -> str:
-    theme = app_schema.get("ui_theme") or {}
-    mode = _infer_theme_mode(theme)
-    layout = _infer_layout_archetype(app_schema)
-    primary = theme.get("primary_color", "#4f46e5")
-    secondary = theme.get("secondary_color", "#c7d2fe")
-    background = theme.get("background_color", "#020617" if mode == "dark" else "#ffffff")
-    text = theme.get("text_color", "#f8fafc" if mode == "dark" else "#0f172a")
-    surface = theme.get("surface_color", "rgba(15,23,42,0.78)" if mode == "dark" else "rgba(255,255,255,0.92)")
-    surface_text = theme.get("surface_text_color", "#f8fafc" if mode == "dark" else text)
-    border = theme.get("border_color", "rgba(148,163,184,0.18)" if mode == "dark" else "#dbe3f0")
-    muted = theme.get("muted_text_color", "rgba(226,232,240,0.72)" if mode == "dark" else "#64748b")
-    input_background = theme.get("input_background", "rgba(15,23,42,0.92)" if mode == "dark" else "#ffffff")
-    subtle_surface = theme.get("subtle_surface_color", "rgba(30,41,59,0.7)" if mode == "dark" else "rgba(248,250,252,.86)")
-    page_background = theme.get(
-        "page_background",
-        f"radial-gradient(circle at top, #0f172a 0%, {background} 36%, #020617 100%)"
-        if mode == "dark"
-        else f"radial-gradient(circle at top, #eef4ff 0%, {background} 34%, #ffffff 100%)",
-    )
-    button_text = theme.get("button_text_color", "#f8fafc" if mode == "dark" else "#ffffff")
-    radius = theme.get("border_radius", "16px")
-    font_family = theme.get("font_family", '"Segoe UI", "PingFang SC", system-ui, sans-serif')
-    layout_widths = {
-        "marketing": ("1180px", "780px", "1080px"),
-        "editorial": ("960px", "760px", "980px"),
-        "dashboard": ("1320px", "860px", "1040px"),
-        "centered-auth": ("960px", "700px", "920px"),
-        "immersive": ("1480px", "860px", "1120px"),
-        "workspace": ("1380px", "860px", "1080px"),
+def _build_preview_html(
+    title: str,
+    language: str,
+    styles_css: str,
+    runtime_js: str,
+    site_data: dict[str, Any],
+) -> str:
+    preview_payload = {
+        "preview": True,
+        "title": title,
+        "language": language,
+        "current_route": site_data.get("default_route") or "/",
+        "default_route": site_data.get("default_route") or "/",
+        "route_map": site_data.get("route_map") or {},
+        "pages": site_data.get("pages") or [],
+        "submit_message": _localized(language, "提交成功", "Submitted successfully"),
+        "empty_message": _localized(language, "当前没有可渲染页面", "No renderable page"),
     }
-    shell_width, reading_width, auth_width = layout_widths.get(layout, layout_widths["workspace"])
-    return f""":root {{
-  --color-primary: {primary};
-  --color-secondary: {secondary};
-  --color-surface: {surface};
-  --color-page: {background};
-  --color-border: {border};
-  --color-muted: {muted};
-  --color-text: {text};
-  --color-surface-text: {surface_text};
-  --color-input-bg: {input_background};
-  --color-subtle-surface: {subtle_surface};
-  --color-button-text: {button_text};
-  --color-accent-soft: {_hex_to_rgba(primary, 0.22 if mode == "dark" else 0.12, "rgba(79,70,229,0.12)")};
-  --color-secondary-soft: {_hex_to_rgba(secondary, 0.24 if mode == "dark" else 0.14, "rgba(199,210,254,0.14)")};
-  --radius: {radius};
-  --shadow: {"0 24px 64px rgba(2,6,23,0.44)" if mode == "dark" else "0 24px 60px rgba(15,23,42,0.12)"};
-  --font-sans: {font_family};
-  --shell-width: {shell_width};
-  --reading-width: {reading_width};
-  --auth-width: {auth_width};
-}}
-* {{ box-sizing: border-box; }}
-body {{ margin: 0; font-family: var(--font-sans); background: {page_background}; color: var(--color-text); }}
-#app {{ min-height: 100vh; }}
-.app-shell {{ min-height: 100vh; }}
-.app-shell.layout-dashboard,.app-shell.layout-workspace {{ padding: 32px 24px 80px; }}
-.app-shell.layout-editorial {{ padding: 40px 24px 88px; }}
-.app-shell.layout-marketing,.app-shell.layout-immersive {{ padding: 0 0 80px; }}
-.app-shell.layout-centered-auth {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px 24px 80px; }}
-.page {{ width: 100%; display: flex; flex-direction: column; gap: 24px; }}
-.page.layout-dashboard,.page.layout-workspace {{ max-width: var(--shell-width); margin: 0 auto; }}
-.page.layout-editorial {{ max-width: var(--reading-width); margin: 0 auto; }}
-.page.layout-centered-auth {{ max-width: var(--auth-width); margin: 0 auto; }}
-.page.layout-marketing,.page.layout-immersive {{ max-width: none; margin: 0; }}
-.stack,.form,.hero-copy,.split-copy,.auth-body {{ display: flex; flex-direction: column; gap: 14px; }}
-.heading {{ margin: 0; font-size: 2rem; line-height: 1.2; color: var(--color-surface-text); }}
-.text {{ margin: 0; color: var(--color-muted); line-height: 1.7; }}
-.button,.button-primary {{ appearance: none; border: 0; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); color: var(--color-button-text); border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
-.button-secondary {{ appearance: none; border: 1px solid var(--color-border); background: { "rgba(255,255,255,0.04)" if mode == "dark" else "var(--color-surface)" }; color: var(--color-surface-text); border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }}
-.field-label {{ font-size: .95rem; color: var(--color-muted); }}
-.input,.select {{ width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; font: inherit; color: var(--color-surface-text); background: var(--color-input-bg); }}
-.card,.stat-card,.table-wrap,.navbar,.hero-card,.feature-card,.stats-card-wrap,.split-card,.cta-card,.auth-card-frame {{ background: var(--color-surface); border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 10px); box-shadow: var(--shadow); }}
-.card,.stat-card,.table-wrap,.navbar,.feature-card,.stats-card-wrap,.split-card,.cta-card {{ padding: 24px; }}
-.navbar,.hero-card,.feature-card,.stats-card-wrap,.split-card,.cta-card {{ width: min(100%, var(--shell-width)); margin: 0 auto; }}
-.auth-card-frame {{ width: min(100%, var(--auth-width)); margin: 0 auto; }}
-.navbar {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; }}
-.navbar-links {{ display: flex; gap: 12px; flex-wrap: wrap; }}
-.navbar-link {{ color: var(--color-muted); text-decoration: none; }}
-.tag {{ display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: var(--color-accent-soft); color: var(--color-primary); font-size: .85rem; }}
-.table {{ width: 100%; border-collapse: collapse; }}
-.table th,.table td {{ border-bottom: 1px solid var(--color-border); padding: 12px 10px; text-align: left; }}
-.hero-card,.split-grid,.auth-grid {{ display: grid; gap: 28px; }}
-.hero-eyebrow,.section-eyebrow {{ display: inline-flex; width: fit-content; padding: 6px 12px; border-radius: 999px; background: var(--color-secondary-soft); color: var(--color-primary); font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }}
-.hero-title,.section-title,.cta-title,.auth-title {{ margin: 0; font-weight: 900; line-height: 1.05; }}
-.hero-title {{ font-size: clamp(2.8rem,5vw,4.5rem); }}
-.section-title,.auth-title,.cta-title {{ font-size: clamp(2rem,4vw,3rem); color: var(--color-surface-text); }}
-.hero-description,.section-description,.cta-description,.auth-description {{ margin: 0; line-height: 1.75; color: var(--color-muted); }}
-.hero-actions,.section-actions,.cta-actions {{ display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }}
-.hero-visual,.split-visual,.auth-visual {{ overflow: hidden; border-radius: calc(var(--radius) + 8px); background: var(--color-subtle-surface); }}
-.hero-visual img,.split-visual img,.auth-visual img,.image {{ display: block; width: 100%; height: 100%; object-fit: cover; }}
-.hero-stats,.stats-grid,.feature-grid-items {{ display: grid; gap: 12px; }}
-.hero-stats,.stats-grid {{ grid-template-columns: repeat(2,minmax(0,1fr)); }}
-.hero-stat,.stats-card {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: var(--color-subtle-surface); padding: 16px; }}
-.feature-item {{ border: 1px solid var(--color-border); border-radius: calc(var(--radius) + 4px); background: var(--color-subtle-surface); padding: 18px; }}
-.feature-item-title {{ margin: 0; font-size: 1.05rem; font-weight: 800; }}
-.feature-item-description {{ margin: 10px 0 0; color: var(--color-muted); line-height: 1.65; }}
-.split-bullets {{ margin: 12px 0 0; padding: 0; list-style: none; }}
-.split-bullets li {{ display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; line-height: 1.7; }}
-.split-bullets li::before {{ content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--color-primary); margin-top: 9px; flex: none; }}
-.cta-card {{ background: #0f172a; color: white; }}
-.cta-description {{ color: rgba(255,255,255,.74); }}
-.auth-card-frame {{ overflow: hidden; }}
-.auth-visual {{ min-height: 280px; background: #0f172a; }}
-.auth-body {{ padding: 24px; }}
-.auth-footer {{ margin-top: 16px; color: var(--color-muted); }}
-.auth-link {{ border: 0; background: transparent; color: var(--color-primary); font: inherit; font-weight: 700; cursor: pointer; }}
-.pager {{ position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 8px 10px; box-shadow: var(--shadow); }}
-.pager-dot {{ width: 10px; height: 10px; border: 0; border-radius: 999px; background: #cbd5e1; cursor: pointer; }}
-.pager-dot.is-active {{ width: 28px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); }}
-.toast {{ position: fixed; right: 24px; bottom: 24px; padding: 12px 16px; background: #16a34a; color: #fff; border-radius: 14px; box-shadow: var(--shadow); }}
-.modal {{ position: fixed; inset: 0; background: rgba(15,23,42,.42); display: flex; align-items: center; justify-content: center; padding: 24px; }}
-.modal-card {{ width: min(560px,100%); background: var(--color-surface); border-radius: calc(var(--radius) + 8px); padding: 24px; box-shadow: var(--shadow); }}
-.empty-state {{ max-width: 720px; margin: 64px auto; background: var(--color-surface); border: 1px dashed var(--color-border); border-radius: calc(var(--radius) + 8px); padding: 32px; text-align: center; color: var(--color-muted); }}
-@media (min-width: 768px) {{
-  .hero-card {{ grid-template-columns: 1.05fr .95fr; }}
-  .split-grid {{ grid-template-columns: repeat(2,minmax(0,1fr)); align-items: center; }}
-  .auth-grid {{ grid-template-columns: .92fr 1.08fr; }}
-  .feature-grid-items.cols-2 {{ grid-template-columns: repeat(2,minmax(0,1fr)); }}
-  .feature-grid-items.cols-3 {{ grid-template-columns: repeat(3,minmax(0,1fr)); }}
-  .feature-grid-items.cols-4 {{ grid-template-columns: repeat(4,minmax(0,1fr)); }}
-  .hero-stats,.stats-grid {{ grid-template-columns: repeat(4,minmax(0,1fr)); }}
-}}
+    return f"""<!doctype html>
+<html lang="{_escape_attr(language)}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{_escape_text(title)}</title>
+    <style>{styles_css}</style>
+  </head>
+  <body>
+    <div id="na-preview-root" class="na-preview-shell"></div>
+    <script id="na-site-data" type="application/json">{_json_script(preview_payload)}</script>
+    <script>{runtime_js}</script>
+  </body>
+</html>
 """
 
 
-def _build_app_js() -> str:
-    return """import { appSchema, codeBundle } from "./schema.js";
-
-const root = document.getElementById("app");
-const state = { ...(codeBundle.initial_state || {}) };
-const formData = {};
-const modalState = {};
-let currentRoute = appSchema.pages?.[0]?.route || "/";
-let toastTimer = null;
-const fallbackImage = "__IMAGE_PLACEHOLDER__";
-
-function getCurrentPage(){ return appSchema.pages.find((page) => page.route === currentRoute) || appSchema.pages?.[0]; }
-function normalizeLayoutArchetype(value, fallback = "workspace"){ const text = String(value || "").trim().toLowerCase(); return ["marketing","editorial","dashboard","centered-auth","workspace","immersive"].includes(text) ? text : fallback; }
-function getLayoutArchetype(page){ return normalizeLayoutArchetype(page?.layout_archetype || appSchema.layout_archetype || appSchema.design_brief?.layout_archetype || appSchema.app_type, "workspace"); }
-function getText(node, fallback = ""){ return String(node?.props?.text ?? node?.props?.children ?? node?.props?.label ?? fallback); }
-function getFormId(node, parentFormId){ return node?.props?.form_id || parentFormId || node?.id; }
-function getStringArray(value){ if(Array.isArray(value)) return value.map((item) => String(item)); if(typeof value === "string" && value.trim()) return value.split(/[,\n|/]+/).map((item) => item.trim()).filter(Boolean); return []; }
-function getFeatureItems(value){ if(!Array.isArray(value)) return []; return value.map((item, index) => typeof item === "string" ? { title: item, description: "" } : { title: String(item?.title || item?.label || `Feature ${index + 1}`), description: String(item?.description || item?.text || ""), badge: String(item?.badge || ""), icon: String(item?.icon || "") }); }
-function getStatItems(value){ if(!Array.isArray(value)) return []; return value.filter((item) => item && typeof item === "object").map((item, index) => ({ label: String(item?.label || `Metric ${index + 1}`), value: String(item?.value || item?.number || "--"), caption: String(item?.caption || item?.change || "") })); }
-function getImageSrc(value){ return typeof value === "string" && value.trim() ? value.trim() : fallbackImage; }
-function showToast(message){ const existing = document.querySelector(".toast"); if(existing) existing.remove(); const toast = document.createElement("div"); toast.className = "toast"; toast.textContent = message; document.body.appendChild(toast); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.remove(), 2200); }
-function followTransitions(triggerId){ const next = codeBundle.page_transitions?.find((item) => item.trigger_component === triggerId); if(next){ const target = appSchema.pages.find((page) => page.id === next.to_page); if(target){ currentRoute = target.route; render(); } } }
-function submitForm(formId){ const handler = codeBundle.form_handlers?.find((item) => item.form_id === formId); showToast(handler?.submit_action === "save_local" ? "Form saved" : "Form submitted"); followTransitions(formId); }
-function handleAction(action, fallbackId){ if(!action) return; if(action.type === "navigate" && action.payload?.route){ currentRoute = action.payload.route; render(); return; } if(action.type === "submit_form"){ submitForm(action.payload?.form_id || fallbackId); return; } if(action.type === "set_value" && action.payload?.key){ state[action.payload.key] = action.payload.value; render(); return; } if(action.type === "open_modal"){ modalState[action.payload?.modal_id || fallbackId] = true; render(); return; } if(action.type === "close_modal"){ modalState[action.payload?.modal_id || fallbackId] = false; render(); } }
-function createButton(label, route, className = "button-primary"){ const button = document.createElement("button"); button.className = className; button.type = "button"; button.textContent = String(label || "Continue"); button.addEventListener("click", () => { if(route){ currentRoute = String(route); render(); } }); return button; }
-function createFieldWrapper(labelText){ const wrapper = document.createElement("div"); wrapper.className = "field"; if(labelText){ const label = document.createElement("label"); label.className = "field-label"; label.textContent = labelText; wrapper.appendChild(label); } return wrapper; }
-
-function renderNode(node, parentFormId){
-  switch(node.type){
-    case "heading": { const el = document.createElement("h2"); el.className = "heading"; el.textContent = getText(node, "Heading"); return el; }
-    case "text": { const el = document.createElement("p"); el.className = "text"; el.textContent = getText(node); return el; }
-    case "button": { const button = document.createElement("button"); button.className = "button"; button.type = "button"; button.textContent = getText(node, "Button"); button.addEventListener("click", () => (node.actions || []).forEach((action) => handleAction(action, parentFormId || node.id))); return button; }
-    case "input": { const formId = getFormId(node, parentFormId); const fieldName = node.props?.name || node.id; const wrapper = createFieldWrapper(node.props?.label); const input = document.createElement("input"); input.className = "input"; input.type = String(node.props?.type || "text"); input.placeholder = String(node.props?.placeholder || ""); input.value = formData[formId]?.[fieldName] || ""; input.addEventListener("input", (event) => { formData[formId] = formData[formId] || {}; formData[formId][fieldName] = event.target.value; }); wrapper.appendChild(input); return wrapper; }
-    case "select": { const formId = getFormId(node, parentFormId); const fieldName = node.props?.name || node.id; const wrapper = createFieldWrapper(node.props?.label); const select = document.createElement("select"); select.className = "select"; const placeholder = document.createElement("option"); placeholder.value = ""; placeholder.textContent = "Select"; select.appendChild(placeholder); (Array.isArray(node.props?.options) ? node.props.options : []).forEach((value) => { const option = document.createElement("option"); option.value = String(value); option.textContent = String(value); select.appendChild(option); }); select.value = formData[formId]?.[fieldName] || ""; select.addEventListener("change", (event) => { formData[formId] = formData[formId] || {}; formData[formId][fieldName] = event.target.value; }); wrapper.appendChild(select); return wrapper; }
-    case "form": { const form = document.createElement("form"); form.className = "form"; form.addEventListener("submit", (event) => { event.preventDefault(); submitForm(node.id); }); (node.children || []).forEach((child) => form.appendChild(renderNode(child, node.id))); return form; }
-    case "card": { const card = document.createElement("section"); card.className = "card stack"; if(node.props?.title){ const title = document.createElement("h3"); title.className = "card-title"; title.textContent = String(node.props.title); card.appendChild(title); } if(Array.isArray(node.children) && node.children.length){ node.children.forEach((child) => card.appendChild(renderNode(child, parentFormId))); } else if(node.props?.content){ const text = document.createElement("p"); text.className = "text"; text.textContent = String(node.props.content); card.appendChild(text); } return card; }
-    case "stat-card": { const card = document.createElement("section"); card.className = "stat-card"; card.innerHTML = `<p class="stat-label">${String(node.props?.label || "Metric")}</p><p class="stat-value">${String(node.props?.value || "0")}</p>${node.props?.change ? `<p class="stat-change">${String(node.props.change)}</p>` : ""}`; return card; }
-    case "table": { const wrap = document.createElement("div"); wrap.className = "table-wrap"; const table = document.createElement("table"); table.className = "table"; const columns = Array.isArray(node.props?.columns) ? node.props.columns : []; const rows = Array.isArray(node.props?.rows) ? node.props.rows : []; table.innerHTML = `<thead><tr>${columns.map((column) => `<th>${String(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td>${String(row?.[column] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody>`; wrap.appendChild(table); return wrap; }
-    case "navbar": { const nav = document.createElement("nav"); nav.className = "navbar"; const title = document.createElement("strong"); title.textContent = String(node.props?.title || appSchema.title || "App"); nav.appendChild(title); const links = document.createElement("div"); links.className = "navbar-links"; (Array.isArray(node.props?.links) ? node.props.links : []).forEach((item) => { const link = document.createElement("a"); link.className = "navbar-link"; link.href = "#"; link.textContent = String(item?.label || item?.text || "Link"); link.addEventListener("click", (event) => { event.preventDefault(); if(item?.route){ currentRoute = item.route; render(); } }); links.appendChild(link); }); nav.appendChild(links); return nav; }
-    case "tag": { const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = getText(node, "Tag"); return tag; }
-    case "image": { const image = document.createElement("img"); image.className = "image"; image.src = String(node.props?.src || fallbackImage); image.alt = String(node.props?.alt || getText(node, "image")); image.addEventListener("error", () => { image.src = fallbackImage; }); return image; }
-    case "hero": { const section = document.createElement("section"); section.className = "hero"; const card = document.createElement("div"); card.className = "hero-card"; const copy = document.createElement("div"); copy.className = "hero-copy"; if(node.props?.eyebrow){ const eyebrow = document.createElement("div"); eyebrow.className = "hero-eyebrow"; eyebrow.textContent = String(node.props.eyebrow); copy.appendChild(eyebrow); } const title = document.createElement("h1"); title.className = "hero-title"; title.textContent = String(node.props?.title || "Hero title"); copy.appendChild(title); if(node.props?.description){ const desc = document.createElement("p"); desc.className = "hero-description"; desc.textContent = String(node.props.description); copy.appendChild(desc); } const actions = document.createElement("div"); actions.className = "hero-actions"; if(node.props?.primary_cta_label) actions.appendChild(createButton(node.props.primary_cta_label, node.props.primary_cta_route, "button-primary")); if(node.props?.secondary_cta_label) actions.appendChild(createButton(node.props.secondary_cta_label, node.props.secondary_cta_route, "button-secondary")); if(actions.children.length) copy.appendChild(actions); const stats = getStatItems(node.props?.stats); if(stats.length){ const statsWrap = document.createElement("div"); statsWrap.className = "hero-stats"; stats.forEach((item) => { const stat = document.createElement("div"); stat.className = "hero-stat"; stat.innerHTML = `<div class="hero-stat-value">${item.value}</div><div class="hero-stat-label">${item.label}</div>${item.caption ? `<div class="hero-stat-caption">${item.caption}</div>` : ""}`; statsWrap.appendChild(stat); }); copy.appendChild(statsWrap); } const visual = document.createElement("div"); visual.className = "hero-visual"; const image = document.createElement("img"); image.src = getImageSrc(node.props?.image_src); image.alt = String(node.props?.image_alt || ""); image.addEventListener("error", () => { image.src = fallbackImage; }); visual.appendChild(image); card.append(copy, visual); section.appendChild(card); return section; }
-    case "feature-grid": { const section = document.createElement("section"); section.className = "feature-grid"; const card = document.createElement("div"); card.className = "feature-card"; if(node.props?.title){ const title = document.createElement("h2"); title.className = "section-title"; title.textContent = String(node.props.title); card.appendChild(title); } if(node.props?.description){ const desc = document.createElement("p"); desc.className = "section-description"; desc.textContent = String(node.props.description); card.appendChild(desc); } const itemsWrap = document.createElement("div"); const columns = Math.max(2, Math.min(Number(node.props?.columns || 3), 4)); itemsWrap.className = `feature-grid-items cols-${columns}`; getFeatureItems(node.props?.items).forEach((item) => { const feature = document.createElement("article"); feature.className = "feature-item"; feature.innerHTML = `<h3 class="feature-item-title">${item.title}</h3>${item.description ? `<p class="feature-item-description">${item.description}</p>` : ""}`; itemsWrap.appendChild(feature); }); card.appendChild(itemsWrap); section.appendChild(card); return section; }
-    case "stats-band": { const section = document.createElement("section"); section.className = "stats-band"; const card = document.createElement("div"); card.className = "stats-card-wrap"; const grid = document.createElement("div"); grid.className = "stats-grid"; getStatItems(node.props?.items).forEach((item) => { const stat = document.createElement("div"); stat.className = "stats-card"; stat.innerHTML = `<div class="stats-value">${item.value}</div><div class="stats-label">${item.label}</div>${item.caption ? `<div class="stats-caption">${item.caption}</div>` : ""}`; grid.appendChild(stat); }); card.appendChild(grid); section.appendChild(card); return section; }
-    case "split-section": { const section = document.createElement("section"); section.className = "split-section"; const card = document.createElement("div"); card.className = "split-card"; const grid = document.createElement("div"); grid.className = "split-grid"; const copy = document.createElement("div"); copy.className = "split-copy"; if(node.props?.eyebrow){ const eyebrow = document.createElement("div"); eyebrow.className = "section-eyebrow"; eyebrow.textContent = String(node.props.eyebrow); copy.appendChild(eyebrow); } const title = document.createElement("h2"); title.className = "section-title"; title.textContent = String(node.props?.title || "Section title"); copy.appendChild(title); if(node.props?.description){ const desc = document.createElement("p"); desc.className = "section-description"; desc.textContent = String(node.props.description); copy.appendChild(desc); } const bullets = getStringArray(node.props?.bullets); if(bullets.length){ const list = document.createElement("ul"); list.className = "split-bullets"; bullets.forEach((item) => { const li = document.createElement("li"); li.textContent = item; list.appendChild(li); }); copy.appendChild(list); } const actions = document.createElement("div"); actions.className = "section-actions"; if(node.props?.primary_cta_label) actions.appendChild(createButton(node.props.primary_cta_label, node.props.primary_cta_route, "button-primary")); if(node.props?.secondary_cta_label) actions.appendChild(createButton(node.props.secondary_cta_label, node.props.secondary_cta_route, "button-secondary")); if(actions.children.length) copy.appendChild(actions); const visual = document.createElement("div"); visual.className = "split-visual"; const image = document.createElement("img"); image.src = getImageSrc(node.props?.image_src); image.alt = String(node.props?.image_alt || ""); image.addEventListener("error", () => { image.src = fallbackImage; }); visual.appendChild(image); if(node.props?.reverse) grid.append(visual, copy); else grid.append(copy, visual); card.appendChild(grid); section.appendChild(card); return section; }
-    case "cta-band": { const section = document.createElement("section"); section.className = "cta-band"; const card = document.createElement("div"); card.className = "cta-card"; const title = document.createElement("h2"); title.className = "cta-title"; title.textContent = String(node.props?.title || "Ready to move faster?"); card.appendChild(title); if(node.props?.description){ const desc = document.createElement("p"); desc.className = "cta-description"; desc.textContent = String(node.props.description); card.appendChild(desc); } const actions = document.createElement("div"); actions.className = "cta-actions"; if(node.props?.primary_cta_label) actions.appendChild(createButton(node.props.primary_cta_label, node.props.primary_cta_route, "button-primary")); if(node.props?.secondary_cta_label) actions.appendChild(createButton(node.props.secondary_cta_label, node.props.secondary_cta_route, "button-secondary")); if(actions.children.length) card.appendChild(actions); section.appendChild(card); return section; }
-    case "auth-card": { const section = document.createElement("section"); section.className = "auth-card"; const frame = document.createElement("div"); frame.className = "auth-card-frame auth-grid"; const visual = document.createElement("div"); visual.className = "auth-visual"; const image = document.createElement("img"); image.src = getImageSrc(node.props?.image_src); image.alt = String(node.props?.image_alt || ""); image.addEventListener("error", () => { image.src = fallbackImage; }); visual.appendChild(image); const body = document.createElement("div"); body.className = "auth-body"; const title = document.createElement("h2"); title.className = "auth-title"; title.textContent = String(node.props?.title || "Welcome back"); body.appendChild(title); if(node.props?.description){ const desc = document.createElement("p"); desc.className = "auth-description"; desc.textContent = String(node.props.description); body.appendChild(desc); } (node.children || []).forEach((child) => body.appendChild(renderNode(child, parentFormId))); if(node.props?.footer_text){ const footer = document.createElement("div"); footer.className = "auth-footer"; footer.textContent = String(node.props.footer_text) + " "; if(node.props?.footer_link_label){ const link = document.createElement("button"); link.className = "auth-link"; link.type = "button"; link.textContent = String(node.props.footer_link_label); link.addEventListener("click", () => { if(node.props?.footer_link_route){ currentRoute = String(node.props.footer_link_route); render(); } }); footer.appendChild(link); } body.appendChild(footer); } frame.append(visual, body); section.appendChild(frame); return section; }
-    case "modal": { const visible = modalState[node.id]; const placeholder = document.createElement("div"); if(!visible) return placeholder; placeholder.className = "modal"; const card = document.createElement("div"); card.className = "modal-card stack"; (node.children || []).forEach((child) => card.appendChild(renderNode(child, parentFormId))); placeholder.appendChild(card); return placeholder; }
-    default: { const fallback = document.createElement("pre"); fallback.className = "text"; fallback.textContent = `[Unsupported component: ${node.type}]`; return fallback; }
-  }
-}
-
-function renderPager(){ const pager = document.createElement("div"); pager.className = "pager"; appSchema.pages.forEach((page) => { const dot = document.createElement("button"); dot.className = `pager-dot ${page.route === currentRoute ? "is-active" : ""}`; dot.title = page.name; dot.addEventListener("click", () => { currentRoute = page.route; render(); }); pager.appendChild(dot); }); return pager; }
-function render(){ root.innerHTML = ""; const page = getCurrentPage(); if(!page){ root.innerHTML = '<div class="empty-state">No renderable page in schema.</div>'; return; } const layout = getLayoutArchetype(page); const shell = document.createElement("div"); shell.className = `app-shell layout-${layout}`; const pageEl = document.createElement("main"); pageEl.className = `page layout-${layout}`; page.components.forEach((node) => pageEl.appendChild(renderNode(node))); shell.appendChild(pageEl); root.appendChild(shell); if((appSchema.pages || []).length > 1){ root.appendChild(renderPager()); } }
-render();
-""".replace("__IMAGE_PLACEHOLDER__", _image_placeholder_data_uri())
-
-
-def _build_readme(title: str, prompt: str) -> str:
+def _build_readme(title: str, prompt: str, pages: list[dict[str, Any]]) -> str:
+    page_lines = "\\n".join(
+        f"- `{page.get('route')}` -> `{page.get('path')}`"
+        for page in pages
+        if isinstance(page, dict)
+    )
     return f"""# {title}
 
-This folder is a static export generated by Nano Atoms.
+This folder is a static multi-page export generated by Nano Atoms.
 
-## Files
+## Structure
 
-- `index.html`: entry page
-- `src/styles.css`: page styles and theme variables
-- `src/schema.js`: generated schema and interaction bundle
-- `src/app.js`: runtime renderer
+- `index.html`: entry page for the generated site
+- `pages/*.html`: additional generated pages
+- `src/styles.css`: shared site styling
+- `src/app.js`: lightweight runtime for navigation and form feedback
+- `src/schema.js`: exported planning schema and interaction bundle
+- `data/app-schema.json`: raw generated schema
+- `data/code-bundle.json`: bindings and transitions
+- `data/site-pages.json`: pre-rendered page snapshots used by preview mode
+
+## Generated Routes
+
+{page_lines or "- `/` -> `index.html`"}
 
 ## Original Prompt
 
@@ -342,38 +955,139 @@ def build_project_artifact(
     prompt: str,
     app_schema: dict[str, Any],
     code_bundle: dict[str, Any],
+    freeform_site: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    title = app_schema.get("title") or "Nano Atoms App"
+    title = str(app_schema.get("title") or "Nano Atoms App")
     package_name = _slugify(title)
-    quality_report = app_schema.get("quality_report")
+    language = _content_language(app_schema)
+    pages = app_schema.get("pages") if isinstance(app_schema.get("pages"), list) else []
+    runtime_js = _build_runtime_js()
+    styles_css = _build_styles_css(app_schema)
+    freeform_site = freeform_site if isinstance(freeform_site, dict) else {}
+    freeform_css = str(freeform_site.get("global_css") or "").strip()
+    freeform_runtime = str(freeform_site.get("runtime_js") or "").strip()
+    freeform_pages_raw = freeform_site.get("pages") if isinstance(freeform_site.get("pages"), list) else []
+    freeform_pages: dict[str, dict[str, Any]] = {}
+    for item in freeform_pages_raw:
+        if not isinstance(item, dict):
+            continue
+        route = _nav_target(str(item.get("route") or "/"))
+        freeform_pages[route] = item
+    if freeform_css:
+        styles_css = f"{styles_css}\n\n/* Freeform site codegen overrides */\n{freeform_css}\n"
+    if freeform_runtime:
+        runtime_js = (
+            f"{runtime_js}\n\ntry {{\n{freeform_runtime}\n}} "
+            'catch (error) { console.error("freeform site enhancement failed", error); }\n'
+        )
 
-    files = [
-        {"path": "README.md", "language": "markdown", "content": _build_readme(title, prompt)},
-        {"path": "index.html", "language": "html", "content": _build_index_html(title)},
-        {"path": "src/styles.css", "language": "css", "content": _build_styles_css(app_schema)},
-        {"path": "src/schema.js", "language": "javascript", "content": _build_schema_js(app_schema, code_bundle)},
-        {"path": "src/app.js", "language": "javascript", "content": _build_app_js()},
-        {"path": "data/app-schema.json", "language": "json", "content": _json_text(app_schema)},
-        {"path": "data/code-bundle.json", "language": "json", "content": _json_text(code_bundle)},
-    ]
-    if isinstance(quality_report, dict):
-        files.append(
+    rendered_pages: list[dict[str, Any]] = []
+    route_map: dict[str, str] = {}
+
+    for index, page in enumerate(page for page in pages if isinstance(page, dict)):
+        route = _nav_target(str(page.get("route") or "/"))
+        file_path = "index.html" if route == "/" else f"pages/{_page_file_name(route, index)}"
+        route_map[route] = file_path
+        freeform_page = freeform_pages.get(route) or {}
+        rendered_html = str(freeform_page.get("body_html") or "").strip() or _render_page_markup(app_schema, page)
+        rendered_pages.append(
             {
-                "path": "data/quality-report.json",
-                "language": "json",
-                "content": _json_text(quality_report),
+                "id": str(page.get("id") or f"page-{index + 1}"),
+                "name": str(freeform_page.get("title") or page.get("name") or f"Page {index + 1}"),
+                "route": route,
+                "path": file_path,
+                "layout": _infer_layout_archetype(app_schema, page),
+                "html": rendered_html,
             }
         )
 
+    if not rendered_pages:
+        rendered_pages.append(
+            {
+                "id": "home",
+                "name": _localized(language, "首页", "Home"),
+                "route": "/",
+                "path": "index.html",
+                "layout": _infer_layout_archetype(app_schema),
+                "html": f'<main class="na-page"><section class="na-section na-panel"><h1 class="na-heading">{_escape_text(title)}</h1><p class="na-text">{_escape_text(_localized(language, "当前没有可渲染页面。", "No renderable page."))}</p></section></main>',
+            }
+        )
+        route_map["/"] = "index.html"
+
+    default_route = rendered_pages[0]["route"]
+    site_data = {
+        "title": title,
+        "language": language,
+        "default_route": default_route,
+        "route_map": route_map,
+        "pages": rendered_pages,
+    }
+
+    files: list[dict[str, Any]] = [
+        {"path": "README.md", "language": "markdown", "content": _build_readme(title, prompt, rendered_pages)},
+        {"path": "src/styles.css", "language": "css", "content": styles_css},
+        {"path": "src/app.js", "language": "javascript", "content": runtime_js},
+        {
+            "path": "src/schema.js",
+            "language": "javascript",
+            "content": _build_schema_js(app_schema, code_bundle, site_data),
+        },
+        {"path": "data/app-schema.json", "language": "json", "content": _json_text(app_schema)},
+        {"path": "data/code-bundle.json", "language": "json", "content": _json_text(code_bundle)},
+        {"path": "data/site-pages.json", "language": "json", "content": _json_text(site_data)},
+    ]
+    if freeform_site:
+        files.append({"path": "data/freeform-site.json", "language": "json", "content": _json_text(freeform_site)})
+
+    for page in rendered_pages:
+        path = page["path"]
+        if path == "index.html":
+            files.append(
+                {
+                    "path": path,
+                    "language": "html",
+                    "content": _build_index_html(
+                        title=title,
+                        language=language,
+                        page_markup=page["html"],
+                        route_map=route_map,
+                        default_route=default_route,
+                        current_route=page["route"],
+                    ),
+                }
+            )
+        else:
+            files.append(
+                {
+                    "path": path,
+                    "language": "html",
+                    "content": _build_page_snapshot_html(
+                        title=title,
+                        language=language,
+                        page_markup=page["html"],
+                        route_map=route_map,
+                        default_route=default_route,
+                        current_route=page["route"],
+                        styles_href="../src/styles.css",
+                        script_src="../src/app.js",
+                    ),
+                }
+            )
+
+    preview_html = _build_preview_html(
+        title=title,
+        language=language,
+        styles_css=styles_css,
+        runtime_js=runtime_js,
+        site_data=site_data,
+    )
+
     return {
-        "format": "project_files_v1",
+        "format": "site_files_v3",
         "title": title,
         "package_name": package_name,
         "entry": "index.html",
         "code_bundle": code_bundle,
-        "quality_report": quality_report,
-        "files": [
-            {**file, "language": file.get("language") or _infer_language(file["path"])}
-            for file in files
-        ],
+        "files": [{**file, "language": file.get("language") or _infer_language(file["path"])} for file in files],
+        "preview_html": preview_html,
     }

@@ -104,3 +104,10 @@ export function extractCodeBundle(raw: string | null): CodeBundle | null {
   }
   return null;
 }
+
+export function extractPreviewHtml(
+  raw: string | null,
+  schemaJson: string | null = null
+): string | null {
+  return parseCodeArtifact(raw, schemaJson)?.preview_html ?? null;
+}
