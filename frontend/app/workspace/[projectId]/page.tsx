@@ -41,7 +41,9 @@ export default function WorkspacePage({ params }: Props) {
     currentVersionId,
     messages,
     addMessage,
+    setMessages,
     resetAgents,
+    setAgentSnapshots,
     setGenerationStatus,
     generationStatus,
   } = useWorkspaceStore();
@@ -99,6 +101,25 @@ export default function WorkspacePage({ params }: Props) {
     enabled: hasHydrated && isAuthenticated && !!projectId,
   });
 
+  const { data: historyMessages = [] } = useQuery({
+    queryKey: ["project-messages", projectId],
+    queryFn: () => projectsApi.messages(projectId).then((response) => response.data),
+    enabled: hasHydrated && isAuthenticated && !!projectId,
+  });
+
+  useEffect(() => {
+    if (messages.length > 0) return;
+    if (historyMessages.length === 0) return;
+
+    setMessages(
+      historyMessages.map((message) => ({
+        id: `history-${message.id}`,
+        role: message.role === "user" ? "user" : "assistant",
+        content: message.content,
+      }))
+    );
+  }, [historyMessages, messages.length, setMessages]);
+
   useEffect(() => {
     if (versions.length === 0) {
       setVersionData(null);
@@ -107,7 +128,12 @@ export default function WorkspacePage({ params }: Props) {
 
     setVersions(versions);
     if (!currentVersionId) {
-      setCurrentVersion(project?.latest_version_id ?? versions[0].id);
+      const newestVersion = versions[0];
+      const preferredVersionId =
+        newestVersion.status === "queued" || newestVersion.status === "running"
+          ? newestVersion.id
+          : project?.latest_version_id ?? newestVersion.id;
+      setCurrentVersion(preferredVersionId);
     }
   }, [versions, project, currentVersionId, setVersions, setCurrentVersion]);
 
@@ -133,18 +159,31 @@ export default function WorkspacePage({ params }: Props) {
 
   useEffect(() => {
     if (!currentVersionId) return;
+    let active = true;
     versionApi
       .get(currentVersionId)
       .then((response) => {
+        if (!active) return;
         setVersionData({
           projectId,
           schema_json: response.data.schema_json,
           code_json: response.data.code_json,
           status: response.data.status,
         });
+        setAgentSnapshots(response.data.agent_runs ?? []);
+        setGenerationStatus(
+          response.data.status === "completed"
+            ? "completed"
+            : response.data.status === "failed"
+              ? "failed"
+              : "running"
+        );
       })
       .catch(() => {});
-  }, [currentVersionId, projectId]);
+    return () => {
+      active = false;
+    };
+  }, [currentVersionId, projectId, setAgentSnapshots, setGenerationStatus]);
 
   useEffect(() => {
     if (!currentVersionId) return;
@@ -164,18 +203,18 @@ export default function WorkspacePage({ params }: Props) {
         }
         addMessage(
           "assistant",
-          "已进入自动生成流程，正在依次执行 Product、Design Director、Architect、UI、Code、Media、QA 七个步骤。"
+          "已进入自动生成流程，正在依次执行 Product、Design Director、Media、应用生成引擎、QA 五个步骤。"
         );
       }
       return;
     }
 
-    if (currentVersion.status === "completed" && generationStatus === "running") {
+    if (currentVersion.status === "completed" && generationStatus !== "completed") {
       setGenerationStatus("completed");
       return;
     }
 
-    if (currentVersion.status === "failed" && generationStatus === "running") {
+    if (currentVersion.status === "failed" && generationStatus !== "failed") {
       setGenerationStatus("failed");
     }
   }, [
@@ -183,8 +222,10 @@ export default function WorkspacePage({ params }: Props) {
     versions,
     messages.length,
     addMessage,
+    setMessages,
     generationStatus,
     resetAgents,
+    setAgentSnapshots,
     setGenerationStatus,
   ]);
 
@@ -204,7 +245,7 @@ export default function WorkspacePage({ params }: Props) {
       "assistant",
       scope !== "full"
         ? `已收到修改需求，正在按“${scopeLabel}”范围进行局部重生成。`
-        : "已收到需求，正在依次执行 Product、Design Director、Architect、UI、Code、Media、QA 七个步骤。"
+        : "已收到需求，正在依次执行 Product、Design Director、Media、应用生成引擎、QA 五个步骤。"
     );
     resetAgents();
     setGenerationStatus("running");

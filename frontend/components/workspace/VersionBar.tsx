@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import AtomBrandMark from "@/components/ui/AtomBrandMark";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import { projectsApi } from "@/lib/api";
 import { useThemeStore } from "@/stores/themeStore";
@@ -69,13 +70,13 @@ export default function VersionBar({
       <div className="flex items-center gap-4">
         <Link href="/" className="group flex items-center gap-3">
           <div
-            className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shadow-sm transition-transform group-hover:-translate-y-0.5 ${
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform group-hover:-translate-y-0.5 ${
               isCyber
-                ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.24)]"
-                : "bg-indigo-600 text-white"
+                ? "border-cyan-400/18 bg-slate-950/72 shadow-[0_0_24px_rgba(34,211,238,0.16)]"
+                : "border-slate-200 bg-white"
             }`}
           >
-            N
+            <AtomBrandMark className="h-7 w-7" />
           </div>
           <div className="flex flex-col">
             <span className={`text-sm font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>

@@ -2,6 +2,7 @@ import type {
   CodeBundle,
   GeneratedFile,
   GeneratedProjectArtifact,
+  QualityReport,
 } from "@/types/schema";
 
 function parseRawJson(raw: string | null): unknown {
@@ -44,6 +45,23 @@ function isGeneratedProjectArtifact(value: unknown): value is GeneratedProjectAr
   );
 }
 
+function isQualityReport(value: unknown): value is QualityReport {
+  return (
+    isRecord(value) &&
+    typeof value.score === "number" &&
+    typeof value.summary === "string" &&
+    Array.isArray(value.checks)
+  );
+}
+
+function extractMetadataQualityReport(raw: string | null): QualityReport | null {
+  const parsed = parseRawJson(raw);
+  if (!isRecord(parsed) || !isQualityReport(parsed.quality_report)) {
+    return null;
+  }
+  return parsed.quality_report;
+}
+
 function buildLegacyArtifact(
   codeBundle: CodeBundle,
   schemaJson: string | null
@@ -59,13 +77,13 @@ function buildLegacyArtifact(
   if (schemaJson) {
     try {
       files.push({
-        path: "app_schema.json",
+        path: "generation_metadata.json",
         language: "json",
         content: JSON.stringify(JSON.parse(schemaJson), null, 2),
       });
     } catch {
       files.push({
-        path: "app_schema.json",
+        path: "generation_metadata.json",
         language: "json",
         content: schemaJson,
       });
@@ -86,7 +104,14 @@ export function parseCodeArtifact(
 ): GeneratedProjectArtifact | null {
   const parsed = parseRawJson(raw);
   if (isGeneratedProjectArtifact(parsed)) {
-    return parsed;
+    const qualityReport = parsed.quality_report ?? extractMetadataQualityReport(schemaJson);
+    if (!qualityReport) {
+      return parsed;
+    }
+    return {
+      ...parsed,
+      quality_report: qualityReport,
+    };
   }
   if (isCodeBundle(parsed)) {
     return buildLegacyArtifact(parsed, schemaJson);

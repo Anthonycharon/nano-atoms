@@ -2,11 +2,10 @@
 
 import { notFound } from "next/navigation";
 import { useEffect, useState } from "react";
-import AppRenderer from "@/components/renderer/AppRenderer";
+import AtomBrandMark from "@/components/ui/AtomBrandMark";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
-import { extractCodeBundle, parseCodeArtifact } from "@/lib/codeArtifacts";
+import { parseCodeArtifact } from "@/lib/codeArtifacts";
 import { useThemeStore } from "@/stores/themeStore";
-import type { AppSchema } from "@/types/schema";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -41,7 +40,7 @@ export default function PublicAppPageClient({ params }: Props) {
       const result = await getPublishedData(slug);
       if (!active) return;
 
-      if (!result || !result.schema_json) {
+      if (!result || !result.code_json) {
         setLoaded(true);
         setData(null);
         return;
@@ -56,11 +55,11 @@ export default function PublicAppPageClient({ params }: Props) {
     };
   }, [params]);
 
-  if (loaded && (!data || !data.schema_json)) {
+  if (loaded && !data?.code_json) {
     notFound();
   }
 
-  if (!loaded || !data?.schema_json) {
+  if (!loaded || !data?.code_json) {
     return (
       <div
         className={`flex min-h-screen items-center justify-center ${
@@ -74,9 +73,7 @@ export default function PublicAppPageClient({ params }: Props) {
     );
   }
 
-  const schema: AppSchema = JSON.parse(data.schema_json);
   const artifact = parseCodeArtifact(data.code_json, data.schema_json);
-  const codeBundle = extractCodeBundle(data.code_json);
   const previewHtml = artifact?.preview_html ?? null;
 
   return (
@@ -104,13 +101,13 @@ export default function PublicAppPageClient({ params }: Props) {
       >
         <div className={`flex items-center gap-2 text-sm ${isCyber ? "text-slate-300" : "text-gray-500"}`}>
           <div
-            className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-bold ${
+            className={`flex h-6 w-6 items-center justify-center rounded border ${
               isCyber
-                ? "bg-cyan-400 text-slate-950 shadow-[0_0_16px_rgba(34,211,238,0.24)]"
-                : "bg-indigo-500 text-white"
+                ? "border-cyan-400/18 bg-slate-950/72 shadow-[0_0_16px_rgba(34,211,238,0.14)]"
+                : "border-slate-200 bg-white"
             }`}
           >
-            N
+            <AtomBrandMark className="h-4 w-4" />
           </div>
           <span>由 Nano Atoms 生成</span>
         </div>
@@ -137,7 +134,13 @@ export default function PublicAppPageClient({ params }: Props) {
             className="min-h-[calc(100vh-56px)] w-full border-0 bg-white"
           />
         ) : (
-          <AppRenderer schema={schema} codeBundle={codeBundle} />
+          <div
+            className={`flex min-h-[calc(100vh-56px)] items-center justify-center px-6 text-center ${
+              isCyber ? "text-slate-300" : "text-slate-500"
+            }`}
+          >
+            当前发布版本没有生成可用的页面预览。
+          </div>
         )}
       </div>
     </div>

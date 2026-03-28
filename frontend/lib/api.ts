@@ -1,5 +1,12 @@
 import axios from "axios";
-import type { AppVersion, Project, ProjectAsset, User } from "@/types/project";
+import type {
+  AppVersion,
+  ConversationMessage,
+  Project,
+  ProjectAsset,
+  User,
+  VersionDetail,
+} from "@/types/project";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -18,11 +25,31 @@ api.interceptors.request.use((config) => {
 });
 
 export const authApi = {
-  register: (email: string, password: string) =>
-    api.post<{ access_token: string }>("/api/auth/register", { email, password }),
+  captcha: () =>
+    api.get<{ captcha_token: string; svg_data_url: string }>("/api/auth/captcha"),
 
-  login: (email: string, password: string) =>
-    api.post<{ access_token: string }>("/api/auth/login", { email, password }),
+  sendRegisterCode: (email: string) =>
+    api.post<{
+      verification_token: string;
+      expires_in_seconds: number;
+      resend_after_seconds: number;
+    }>("/api/auth/register/send-code", { email }),
+
+  register: (email: string, password: string, verification_token: string, verification_code: string) =>
+    api.post<{ access_token: string }>("/api/auth/register", {
+      email,
+      password,
+      verification_token,
+      verification_code,
+    }),
+
+  login: (email: string, password: string, captcha_token: string, captcha_answer: string) =>
+    api.post<{ access_token: string }>("/api/auth/login", {
+      email,
+      password,
+      captcha_token,
+      captcha_answer,
+    }),
 
   me: () => api.get<User>("/api/auth/me"),
 };
@@ -38,7 +65,11 @@ export const projectsApi = {
   update: (id: number, data: { name?: string; description?: string }) =>
     api.patch<Project>(`/api/projects/${id}`, data),
 
+  delete: (id: number) => api.delete(`/api/projects/${id}`),
+
   versions: (id: number) => api.get<AppVersion[]>(`/api/projects/${id}/versions`),
+
+  messages: (id: number) => api.get<ConversationMessage[]>(`/api/projects/${id}/messages`),
 
   assets: (id: number) => api.get<ProjectAsset[]>(`/api/projects/${id}/assets`),
 
@@ -66,7 +97,7 @@ export const projectsApi = {
 };
 
 export const versionApi = {
-  get: (id: number) => api.get(`/api/versions/${id}`),
+  get: (id: number) => api.get<VersionDetail>(`/api/versions/${id}`),
 };
 
 export const publicApi = {

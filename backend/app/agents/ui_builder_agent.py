@@ -55,22 +55,25 @@ async def run_ui_builder_agent(state: dict) -> dict:
 
     try:
         app_schema = state.get("app_schema")
+        site_plan = state.get("site_plan")
         if not isinstance(app_schema, dict) or not app_schema.get("pages"):
-            raise ValueError("UI Builder Agent requires a valid app schema")
+            raise ValueError("UI Builder Agent requires a valid compatibility schema")
+        if not isinstance(site_plan, dict) or not site_plan.get("pages"):
+            raise ValueError("UI Builder Agent requires a valid site plan")
 
         llm = make_llm(temperature=0.45)
         app_context = build_app_context(state.get("app_type"))
         design_brief = state.get("design_brief")
         prd_json = state.get("prd_json")
-        page_names = [page["name"] for page in app_schema.get("pages", [])]
+        page_names = [page["name"] for page in site_plan.get("pages", []) if isinstance(page, dict) and page.get("name")]
         response = await llm.ainvoke(
             [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(
                     content=(
                         f"{app_context}\n"
-                        "Schema summary:\n"
-                        f"{json.dumps({'title': app_schema.get('title'), 'pages': page_names}, ensure_ascii=False)}\n\n"
+                        "Site plan summary:\n"
+                        f"{json.dumps({'title': site_plan.get('title'), 'pages': page_names, 'layout_archetype': site_plan.get('layout_archetype')}, ensure_ascii=False)}\n\n"
                         "PRD JSON:\n"
                         f"{json.dumps(prd_json or {}, ensure_ascii=False)}\n\n"
                         "Design brief:\n"

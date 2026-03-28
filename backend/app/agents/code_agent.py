@@ -1,16 +1,17 @@
-"""Code agent: generate structured interaction logic for the schema."""
+"""Code agent: generate structured interaction logic from site planning data."""
+
+from __future__ import annotations
 
 import json
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .utils import extract_json, make_llm, notify_agent
 
 
-SYSTEM_PROMPT = """你是一位资深应用工程师，根据应用 Schema 生成交互逻辑 JSON（code_bundle）。
-请严格按照以下格式输出，不要包含任何多余内容：
-
-{
+SYSTEM_PROMPT = """你是一位资深应用工程师。请根据应用规划、界面目标与兼容结构，生成一个 JSON 对象 `code_bundle`，不要输出任何额外说明。
+输出格式：{
   "form_handlers": [
     {
       "form_id": "表单组件 ID",
@@ -38,7 +39,24 @@ SYSTEM_PROMPT = """你是一位资深应用工程师，根据应用 Schema 生�
   ]
 }
 
-注意：不要包含任何实际可执行的 JavaScript 代码，只描述行为 JSON。"""
+规则：
+- 只输出 JSON 对象。
+- 不要输出实际可执行的 JavaScript 代码，只描述运行逻辑与状态。
+- 优先依据应用目标、表单流程、关键操作和导航关系生成逻辑。
+- 兼容结构仅用于补充组件与界面 ID，不要把它当成唯一信息来源。"""
+
+
+def _planning_payload(state: dict[str, Any]) -> dict[str, Any]:
+    site_plan = state.get("site_plan") if isinstance(state.get("site_plan"), dict) else {}
+    app_schema = state.get("app_schema") if isinstance(state.get("app_schema"), dict) else {}
+    prd_json = state.get("prd_json") if isinstance(state.get("prd_json"), dict) else {}
+    design_brief = state.get("design_brief") if isinstance(state.get("design_brief"), dict) else {}
+    return {
+        "site_plan": site_plan,
+        "prd_json": prd_json,
+        "design_brief": design_brief,
+        "compat_schema": app_schema,
+    }
 
 
 async def run_code_agent(state: dict) -> dict:
@@ -47,21 +65,25 @@ async def run_code_agent(state: dict) -> dict:
 
     try:
         app_schema = state.get("app_schema")
+        site_plan = state.get("site_plan")
         if not isinstance(app_schema, dict) or not app_schema.get("pages"):
-            raise ValueError("Code Agent requires a valid app schema")
+            raise ValueError("Code Agent requires a valid compatibility schema")
+        if not isinstance(site_plan, dict) or not site_plan.get("pages"):
+            raise ValueError("Code Agent requires a valid site plan")
 
         llm = make_llm(temperature=0.2)
-        response = await llm.ainvoke([
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"应用 Schema：{json.dumps(app_schema, ensure_ascii=False)}"),
-        ])
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=f"应用规划数据：{json.dumps(_planning_payload(state), ensure_ascii=False)}"),
+            ]
+        )
 
         code_bundle = extract_json(response.content)
         if not isinstance(code_bundle, dict):
             raise ValueError("Code Agent expected a JSON object response")
-        form_count = len(code_bundle.get("form_handlers", []))
-        binding_count = len(code_bundle.get("data_bindings", []))
-        summary = f"生成 {form_count} 个表单处理器，{binding_count} 个数据绑定"
+
+        summary = "已整理应用交互逻辑、状态流转与基础运行数据"
 
         await notify_agent(cb, "code", "done", summary)
         return {

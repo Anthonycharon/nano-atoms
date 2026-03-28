@@ -80,11 +80,15 @@ export default function ChatPanel({
   const completedCount = agents.filter((agent) => agent.status === "done").length;
   const runningCount = agents.filter((agent) => agent.status === "running").length;
   const failedCount = agents.filter((agent) => agent.status === "error").length;
+  const isFinalizing =
+    generationStatus === "running" && completedCount === agents.length && agents.length > 0;
   const progress =
     generationStatus === "completed"
       ? 100
       : generationStatus === "failed"
         ? Math.max(20, Math.round(((completedCount + failedCount) / agents.length) * 100))
+        : isFinalizing
+          ? 96
         : Math.max(
             8,
             Math.round(((completedCount + runningCount * 0.45) / agents.length) * 100)
@@ -238,7 +242,9 @@ export default function ChatPanel({
                   <div className={`mt-1 text-xs ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
                     {activeAgent
                       ? `${activeAgent.label} 正在处理当前步骤`
-                      : "已进入生成队列，正在准备执行。"}
+                      : isFinalizing
+                        ? "所有生成步骤已结束，正在收尾保存结果。"
+                        : "已进入生成队列，正在准备执行。"}
                   </div>
                 </div>
                 <div className={`text-sm font-semibold ${isCyber ? "text-cyan-300" : "text-indigo-600"}`}>
@@ -342,7 +348,7 @@ export default function ChatPanel({
                   {activeAgent?.summary ||
                     (activeAgent
                       ? `${activeAgent.label} 正在生成中，请稍候。`
-                      : "正在等待后端返回结果。")}
+                      : "正在收尾、保存版本并刷新预览。")}
                 </div>
               </div>
             </div>

@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nano UI 组件库测试</title>
+  <style>
+    :root {
+      --na-primary: #4f46e5;
+      --na-secondary: #22c55e;
+      --na-bg: #f8fafc;
+      --na-text: #0f172a;
+      --na-surface: rgba(255, 255, 255, 0.92);
+      --na-surface-text: #111827;
+      --na-border: #dbe3f0;
+      --na-muted: #64748b;
+      --na-subtle: rgba(248, 250, 252, 0.86);
+      --na-accent-soft: rgba(79, 70, 229, 0.12);
+      --na-secondary-soft: rgba(34, 197, 94, 0.14);
+      --na-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+      --na-radius: 16px;
+      --na-page-bg: radial-gradient(circle at top, #eef4ff 0%, #f8fafc 38%, #ffffff 100%);
+      --na-font: system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--na-page-bg);
+      color: var(--na-text);
+      font-family: var(--na-font);
+      padding: 2rem;
+    }
+    button, input, select { font: inherit; }
+
+    /* 基础组件样式 */
+    .na-btn {
+      padding: 0.85rem 1.2rem;
+      border-radius: 999px;
+      font-weight: 700;
+      border: 0;
+      background: linear-gradient(135deg, var(--na-primary), var(--na-secondary));
+      color: #fff;
+      cursor: pointer;
+    }
+    .na-btn-secondary {
+      background: var(--na-accent-soft);
+      color: var(--na-surface-text);
+    }
+    .na-card {
+      background: var(--na-surface);
+      color: var(--na-surface-text);
+      border: 1px solid var(--na-border);
+      border-radius: var(--na-radius);
+      box-shadow: var(--na-shadow);
+      padding: 1.5rem;
+      margin: 1rem 0;
+    }
+    .na-card-title {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.2rem;
+      font-weight: 800;
+    }
+    .na-input {
+      width: 100%;
+      padding: 0.9rem 1rem;
+      border-radius: calc(var(--na-radius) - 6px);
+      border: 1px solid var(--na-border);
+      background: rgba(255,255,255,0.5);
+      color: var(--na-text);
+      margin-top: 0.5rem;
+    }
+    .na-label {
+      display: block;
+      margin-bottom: 0.4rem;
+      color: var(--na-muted);
+      font-size: 0.94rem;
+    }
+    .na-field {
+      margin-bottom: 1rem;
+    }
+    .na-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      background: var(--na-surface);
+      padding: 1.5rem;
+      border-radius: var(--na-radius);
+      border: 1px solid var(--na-border);
+    }
+    .na-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .na-table th, .na-table td {
+      padding: 0.95rem 0.9rem;
+      text-align: left;
+      border-bottom: 1px solid var(--na-border);
+    }
+    .na-table-wrap {
+      overflow: hidden;
+      border-radius: var(--na-radius);
+      border: 1px solid var(--na-border);
+      background: var(--na-surface);
+    }
+    .na-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.4rem 0.8rem;
+      border-radius: 999px;
+      background: var(--na-accent-soft);
+      color: var(--na-primary);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* 复合组件样式 */
+    .na-section {
+      margin-top: 1.5rem;
+    }
+    .na-hero {
+      margin: 2rem 0;
+    }
+    .na-hero-grid {
+      display: grid;
+      gap: 2rem;
+    }
+    .na-display {
+      font-size: clamp(2.8rem, 8vw, 4.5rem);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+      margin: 0;
+    }
+    .na-hero-description {
+      color: var(--na-muted);
+      line-height: 1.75;
+      margin: 1rem 0;
+    }
+    .na-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .na-feature-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    .na-feature-grid.na-cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .na-feature-item {
+      padding: 1.25rem;
+      background: var(--na-surface);
+      border-radius: var(--na-radius);
+      border: 1px solid var(--na-border);
+    }
+    .na-feature-badge {
+      font-size: 0.9rem;
+      color: var(--na-primary);
+      margin-bottom: 0.75rem;
+    }
+    .na-feature-title {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+    .na-feature-description {
+      margin: 0.7rem 0 0;
+      color: var(--na-muted);
+      line-height: 1.7;
+    }
+    .na-stat-band {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+    .na-stat-chip {
+      padding: 1rem;
+      border-radius: calc(var(--na-radius) - 6px);
+      background: var(--na-subtle);
+      text-align: center;
+    }
+    .na-stat-chip-value {
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--na-primary);
+    }
+    .na-stat-chip-label {
+      margin-top: 0.35rem;
+      font-size: 0.92rem;
+      color: var(--na-muted);
+    }
+    .na-cta {
+      background: linear-gradient(160deg, rgba(15,23,42,0.96), rgba(30,41,59,0.95));
+      color: #fff;
+      padding: 2rem;
+      border-radius: var(--na-radius);
+      text-align: center;
+    }
+    .na-cta-title {
+      margin: 0 0 0.5rem 0;
+      color: #fff;
+      font-size: 2rem;
+    }
+    .na-cta-description {
+      color: rgba(255,255,255,0.78);
+      margin: 0 0 1.5rem 0;
+    }
+    .na-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .na-modal-open {
+      display: flex;
+    }
+    .na-modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+    }
+    .na-modal-content {
+      position: relative;
+      background: var(--na-surface);
+      border-radius: var(--na-radius);
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow: auto;
+    }
+    .na-modal-close {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--na-muted);
+    }
+    .na-modal-title {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+    }
+    .na-toast {
+      position: fixed;
+      right: 1.5rem;
+      bottom: 1.5rem;
+      padding: 0.85rem 1rem;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--na-primary), var(--na-secondary));
+      color: #fff;
+      box-shadow: var(--na-shadow);
+      z-index: 200;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .na-navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      background: var(--na-surface);
+      border-radius: var(--na-radius);
+      border: 1px solid var(--na-border);
+      margin-bottom: 1.5rem;
+    }
+    .na-brand {
+      font-size: 1.2rem;
+      font-weight: 900;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .na-nav-links {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .na-nav-link {
+      padding: 0.55rem 0.9rem;
+      border-radius: 999px;
+      color: var(--na-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .na-nav-link.is-active {
+      background: var(--na-accent-soft);
+      color: var(--na-primary);
+    }
+
+    @media (min-width: 900px) {
+      .na-hero-grid {
+        grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+        align-items: center;
+      }
+      .na-feature-grid.na-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 style="margin-bottom: 2rem;">Nano UI 组件库测试页面</h1>
+
+  <!-- Navbar -->
+  <section>
+    <h2>1. Navbar 导航栏</h2>
+    <nav class="na-navbar">
+      <button class="na-brand" onclick="alert('Home')">Nano UI</button>
+      <div class="na-nav-links">
+        <button class="na-nav-link is-active">首页</button>
+        <button class="na-nav-link">组件</button>
+        <button class="na-nav-link">文档</button>
+      </div>
+    </nav>
+  </section>
+
+  <!-- Hero -->
+  <section>
+    <h2>2. Hero 主视觉区</h2>
+    <section class="na-section na-hero">
+      <div class="na-hero-grid">
+        <div class="na-hero-copy">
+          <span class="na-tag">新功能</span>
+          <h1 class="na-display">构建精美页面，从未如此简单</h1>
+          <p class="na-hero-description">Nano UI 提供了一套完整的组件库，让您能够快速创建响应式、美观的网页应用。</p>
+          <div class="na-actions">
+            <button class="na-btn" onclick="showToast('开始使用！')">立即开始</button>
+            <button class="na-btn na-btn-secondary" onclick="showToast('了解更多')">了解更多</button>
+          </div>
+          <div class="na-stat-band" style="margin-top: 2rem;">
+            <div class="na-stat-chip">
+              <div class="na-stat-chip-value">15+</div>
+              <div class="na-stat-chip-label">组件</div>
+            </div>
+            <div class="na-stat-chip">
+              <div class="na-stat-chip-value">100%</div>
+              <div class="na-stat-chip-label">响应式</div>
+            </div>
+            <div class="na-stat-chip">
+              <div class="na-stat-chip-value">0</div>
+              <div class="na-stat-chip-label">依赖</div>
+            </div>
+          </div>
+        </div>
+        <div class="na-hero-visual">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 300px; border-radius: var(--na-radius);"></div>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- Feature Grid -->
+  <section>
+    <h2>3. Feature Grid 特性网格</h2>
+    <div class="na-feature-grid na-cols-3">
+      <article class="na-feature-item">
+        <div class="na-feature-badge">⚡ 快速</div>
+        <h3 class="na-feature-title">极速加载</h3>
+        <p class="na-feature-description">无需任何外部依赖，纯原生 JavaScript 实现，加载速度快如闪电。</p>
+      </article>
+      <article class="na-feature-item">
+        <div class="na-feature-badge">🎨 美观</div>
+        <h3 class="na-feature-title">精心设计</h3>
+        <p class="na-feature-description">每一个组件都经过精心设计，确保在任何设备上都能呈现最佳效果。</p>
+      </article>
+      <article class="na-feature-item">
+        <div class="na-feature-badge">🔧 易用</div>
+        <h3 class="na-feature-title">简单易用</h3>
+        <p class="na-feature-description">只需添加 CSS 类名即可使用组件，无需复杂的配置或构建步骤。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- Card -->
+  <section>
+    <h2>4. Card 卡片</h2>
+    <div class="na-card">
+      <h3 class="na-card-title">卡片标题</h3>
+      <p>这是卡片内容。卡片组件可以包含任何内容，如文本、图片、表单等。</p>
+      <div class="na-actions" style="margin-top: 1rem;">
+        <button class="na-btn" onclick="showToast('操作成功！')">确认</button>
+        <button class="na-btn na-btn-secondary">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Form -->
+  <section>
+    <h2>5. Form 表单</h2>
+    <form class="na-form" data-form-id="testForm">
+      <div class="na-field">
+        <label class="na-label" for="name">姓名</label>
+        <input type="text" id="name" class="na-input" placeholder="请输入姓名" />
+      </div>
+      <div class="na-field">
+        <label class="na-label" for="email">邮箱</label>
+        <input type="email" id="email" class="na-input" placeholder="请输入邮箱" />
+      </div>
+      <div class="na-field">
+        <label class="na-label" for="type">类型</label>
+        <select id="type" class="na-input">
+          <option value="">请选择类型</option>
+          <option value="1">类型一</option>
+          <option value="2">类型二</option>
+          <option value="3">类型三</option>
+        </select>
+      </div>
+      <button type="submit" class="na-btn">提交表单</button>
+    </form>
+  </section>
+
+  <!-- Table -->
+  <section>
+    <h2>6. Table 表格</h2>
+    <div class="na-table-wrap">
+      <table class="na-table">
+        <thead>
+          <tr>
+            <th>姓名</th>
+            <th>邮箱</th>
+            <th>角色</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>张三</td>
+            <td>zhangsan@example.com</td>
+            <td>管理员</td>
+            <td><span class="na-tag">活跃</span></td>
+          </tr>
+          <tr>
+            <td>李四</td>
+            <td>lisi@example.com</td>
+            <td>编辑</td>
+            <td><span class="na-tag">活跃</span></td>
+          </tr>
+          <tr>
+            <td>王五</td>
+            <td>wangwu@example.com</td>
+            <td>用户</td>
+            <td><span class="na-tag" style="background: var(--na-secondary-soft); color: #166534;">离线</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section>
+    <h2>7. CTA 行动号召</h2>
+    <section class="na-cta">
+      <h2 class="na-cta-title">准备好开始了吗？</h2>
+      <p class="na-cta-description">立即使用 Nano UI 构建您的下一个项目</p>
+      <div class="na-actions" style="justify-content: center;">
+        <button class="na-btn" onclick="showToast('欢迎加入！')">免费开始</button>
+        <button class="na-btn na-btn-secondary" onclick="showToast('联系我们')">联系销售</button>
+      </div>
+    </section>
+  </section>
+
+  <!-- Modal -->
+  <section>
+    <h2>8. Modal 模态框</h2>
+    <button class="na-btn" onclick="document.getElementById('testModal').classList.add('na-modal-open')">打开模态框</button>
+
+    <div class="na-modal" id="testModal">
+      <div class="na-modal-overlay" onclick="this.parentElement.classList.remove('na-modal-open')"></div>
+      <div class="na-modal-content">
+        <button class="na-modal-close" onclick="this.parentElement.parentElement.classList.remove('na-modal-open')">&times;</button>
+        <h3 class="na-modal-title">模态框标题</h3>
+        <p>这是模态框内容。点击遮罩层或关闭按钮关闭模态框。</p>
+        <div class="na-actions" style="margin-top: 1rem;">
+          <button class="na-btn" onclick="showToast('确认操作'); document.getElementById('testModal').classList.remove('na-modal-open')">确认</button>
+          <button class="na-btn na-btn-secondary" onclick="document.getElementById('testModal').classList.remove('na-modal-open')">取消</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // 简单的 Toast 实现
+    function showToast(message, duration = 2200) {
+      const existing = document.querySelector('.na-toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.className = 'na-toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => toast.remove(), duration);
+    }
+
+    // 表单提交处理
+    document.querySelector('[data-form-id="testForm"]').addEventListener('submit', function(e) {
+      e.preventDefault();
+      showToast('表单提交成功！');
+    });
+  </script>
+</body>
+</html>

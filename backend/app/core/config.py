@@ -10,14 +10,29 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_TIMEOUT_SECONDS: int = 120
+    OPENAI_TIMEOUT_SECONDS: int = 1200
     ARCHITECT_PAGE_CONCURRENCY: int = 3
+    SITE_CODEGEN_PAGE_CONCURRENCY: int = 2
+    SITE_CODEGEN_INITIAL_TIMEOUT_SECONDS: int = 900
+    SITE_CODEGEN_RETRY_TIMEOUT_SECONDS: int = 600
+    SITE_CODEGEN_FULL_TIMEOUT_SECONDS: int = 1200
     OPENAI_IMAGE_API_KEY: str = ""
     OPENAI_IMAGE_BASE_URL: str = ""
     OPENAI_IMAGE_MODEL: str = "gpt-image-1"
     OPENAI_IMAGE_ENABLED: bool = True
     OPENAI_IMAGE_MAX_ASSETS: int = 4
     OPENAI_IMAGE_CONCURRENCY: int = 2
+
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Nano Atoms"
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    EMAIL_CODE_EXPIRE_MINUTES: int = 10
+    EMAIL_CODE_RESEND_SECONDS: int = 60
 
     FRONTEND_URL: str = "http://localhost:3000"
     PUBLIC_BACKEND_URL: str = "http://127.0.0.1:8000"

@@ -36,6 +36,20 @@ class VersionResponse(BaseModel):
     created_at: datetime
 
 
+class ConversationMessageResponse(BaseModel):
+    id: int
+    role: str
+    content: str
+    agent_name: Optional[str]
+    created_at: datetime
+
+
+class AgentRunResponse(BaseModel):
+    agent_name: str
+    status: str
+    output_summary: Optional[str]
+
+
 class ProjectAssetResponse(BaseModel):
     id: int
     project_id: int

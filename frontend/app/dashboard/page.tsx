@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import AtomBrandMark from "@/components/ui/AtomBrandMark";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import { projectsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -141,6 +142,13 @@ export default function DashboardPage() {
   const starterLockRef = useRef(false);
   const isCyber = theme === "cyber";
 
+  const deleteProjectMutation = useMutation({
+    mutationFn: (targetProjectId: number) => projectsApi.delete(targetProjectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -246,13 +254,13 @@ export default function DashboardPage() {
       >
         <Link href="/" className="group flex items-center gap-3">
           <div
-            className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shadow-sm transition-transform group-hover:-translate-y-0.5 ${
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform group-hover:-translate-y-0.5 ${
               isCyber
-                ? "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.24)]"
-                : "bg-indigo-600 text-white"
+                ? "border-cyan-400/18 bg-slate-950/72 shadow-[0_0_24px_rgba(34,211,238,0.16)]"
+                : "border-slate-200 bg-white"
             }`}
           >
-            N
+            <AtomBrandMark className="h-7 w-7" />
           </div>
           <div className="flex flex-col">
             <span className={`font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
@@ -363,15 +371,36 @@ export default function DashboardPage() {
                   >
                     {project.name.trim().slice(0, 1).toUpperCase() || "N"}
                   </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs ${
-                      isCyber
-                        ? "bg-slate-900 text-slate-400"
-                        : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    项目
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs ${
+                        isCyber
+                          ? "bg-slate-900 text-slate-400"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      项目
+                    </span>
+                    <button
+                      type="button"
+                      disabled={deleteProjectMutation.isPending}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!window.confirm(`确定删除项目「${project.name}」吗？该操作不可恢复。`)) {
+                          return;
+                        }
+                        deleteProjectMutation.mutate(project.id);
+                      }}
+                      className={`rounded-full px-2.5 py-1 text-xs transition-colors disabled:opacity-40 ${
+                        isCyber
+                          ? "bg-rose-400/10 text-rose-300 hover:bg-rose-400/20"
+                          : "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                      }`}
+                    >
+                      {deleteProjectMutation.isPending ? "删除中" : "删除"}
+                    </button>
+                  </div>
                 </div>
 
                 <h3

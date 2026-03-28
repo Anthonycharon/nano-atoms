@@ -6,6 +6,14 @@ export const metadata: Metadata = {
   title: "Nano Atoms - AI App Generator",
   description:
     "Describe an app in natural language and generate an interactive result with multiple AI agents.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico?v=20260328b" },
+      { url: "/icon.png?v=20260328b", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico?v=20260328b",
+    apple: "/icon.png?v=20260328b",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

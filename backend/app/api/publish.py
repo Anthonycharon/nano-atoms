@@ -9,8 +9,10 @@ from sqlmodel import Session, select
 
 from app.api.auth import get_current_user
 from app.core.database import get_session
-from app.models import AppVersion, Project, PublishedApp, User
+from app.models import AgentRun, AppVersion, Project, PublishedApp, User
 from app.schemas.generation import PublishRequest, PublishResponse
+from app.schemas.project import AgentRunResponse
+from app.services.version_recovery import reconcile_version_status
 
 router = APIRouter(tags=["publish"])
 
@@ -98,6 +100,8 @@ def get_version(
     if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    version = reconcile_version_status(session, version)
+
     return {
         "id": version.id,
         "project_id": version.project_id,
@@ -107,4 +111,16 @@ def get_version(
         "schema_json": version.schema_json,
         "code_json": version.code_json,
         "created_at": version.created_at.isoformat(),
+        "agent_runs": [
+            AgentRunResponse(
+                agent_name=run.agent_name,
+                status=run.status,
+                output_summary=run.output_summary,
+            ).model_dump()
+            for run in session.exec(
+                select(AgentRun)
+                .where(AgentRun.version_id == version_id)
+                .order_by(AgentRun.id.asc())
+            ).all()
+        ],
     }

@@ -10,8 +10,8 @@ class AppVersion(SQLModel, table=True):
     project_id: int = Field(foreign_key="projects.id", index=True)
     version_no: int = 1
     prompt_snapshot: str = ""
-    schema_json: Optional[str] = None   # JSON string: AppSchema
-    code_json: Optional[str] = None     # JSON string: CodeBundle
+    schema_json: Optional[str] = None   # JSON string: lightweight generation metadata
+    code_json: Optional[str] = None     # JSON string: generated artifact and preview payload
     preview_snapshot: Optional[str] = None  # base64 or URL
     status: str = "queued"  # queued | running | completed | failed
     race_pair_id: Optional[str] = None  # Race Lite 关联 ID

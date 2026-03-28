@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401
-from app.api import assets, auth, generation, projects, publish, ws
+from app.api import assets, auth, debug, generation, projects, publish, ws
 from app.core.config import settings
 from app.core.database import create_all_tables
 from app.services.asset_storage import get_upload_root
@@ -39,6 +39,7 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=get_upload_root()), name="uploads")
 
 app.include_router(auth.router)
+app.include_router(debug.router)
 app.include_router(projects.router)
 app.include_router(generation.router)
 app.include_router(assets.router)

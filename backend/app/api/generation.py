@@ -14,6 +14,7 @@ from app.schemas.generation import GenerateRequest, IterateRequest
 from app.schemas.project import VersionResponse
 from app.services.generation_service import run_generation, run_race_lite
 from app.services.iteration_context import build_iteration_prompt
+from app.services.version_recovery import reconcile_project_versions
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 
@@ -137,6 +138,7 @@ async def iterate(
         body.prompt,
         body.scope,
         last_version.schema_json,
+        last_version.code_json,
     )
 
     conversation = session.exec(
@@ -177,9 +179,12 @@ def list_versions(
     if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    versions = session.exec(
+    versions = list(
+        session.exec(
         select(AppVersion)
         .where(AppVersion.project_id == project_id)
         .order_by(AppVersion.version_no.desc())
     ).all()
+    )
+    versions = reconcile_project_versions(session, versions)
     return [_version_to_response(version) for version in versions]

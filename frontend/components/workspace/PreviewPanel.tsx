@@ -1,27 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import AppRenderer from "@/components/renderer/AppRenderer";
 import CodePanel from "@/components/workspace/CodePanel";
-import { extractCodeBundle, parseCodeArtifact } from "@/lib/codeArtifacts";
+import { parseCodeArtifact } from "@/lib/codeArtifacts";
 import { useThemeStore } from "@/stores/themeStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import type { AppSchema, QualityReport } from "@/types/schema";
+import type { QualityReport } from "@/types/schema";
 
 interface Props {
   schemaJson: string | null;
   codeJson: string | null;
   status: string;
-}
-
-function parseSchema(raw: string | null): AppSchema | null {
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw) as AppSchema;
-  } catch {
-    return null;
-  }
 }
 
 function getCheckBadgeClass(status: "passed" | "warning" | "fixed", isCyber: boolean) {
@@ -134,12 +123,11 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
   const theme = useThemeStore((state) => state.theme);
   const { previewDevice, setPreviewDevice } = useWorkspaceStore();
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
-  const schema = parseSchema(schemaJson);
   const artifact = parseCodeArtifact(codeJson, schemaJson);
-  const codeBundle = extractCodeBundle(codeJson);
   const previewHtml = artifact?.preview_html ?? null;
-  const qualityReport = schema?.quality_report ?? null;
+  const qualityReport = artifact?.quality_report ?? null;
   const isCyber = theme === "cyber";
+  const hasRenderablePreview = Boolean(previewHtml);
 
   return (
     <div className={`flex h-full flex-col ${isCyber ? "bg-slate-950/70" : "bg-white"}`}>
@@ -232,12 +220,24 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
         <div className="flex min-h-0 flex-1 flex-col">
           {qualityReport && <QualityPanel report={qualityReport} isCyber={isCyber} />}
 
+          {status === "running" && hasRenderablePreview && (
+            <div
+              className={`border-b px-5 py-3 text-xs ${
+                isCyber
+                  ? "border-cyan-400/12 bg-cyan-400/8 text-cyan-200"
+                  : "border-indigo-100 bg-indigo-50 text-indigo-700"
+              }`}
+            >
+              核心预览已就绪，应用仍在继续完善。
+            </div>
+          )}
+
           <div
             className={`flex flex-1 items-start justify-center overflow-hidden p-5 ${
               isCyber ? "bg-slate-950/55" : "bg-slate-100"
             }`}
           >
-            {status === "queued" || status === "running" ? (
+            {(status === "queued" || status === "running") && !hasRenderablePreview ? (
               <div
                 className={`flex h-full flex-col items-center justify-center ${
                   isCyber ? "text-slate-400" : "text-slate-500"
@@ -269,10 +269,12 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
                   请查看左侧对话里的错误提示，调整需求后重新生成。
                 </p>
               </div>
-            ) : !schema ? (
+            ) : !previewHtml ? (
               <div className={`flex h-full flex-col items-center justify-center ${isCyber ? "text-slate-500" : "text-slate-500"}`}>
                 <div className="mb-3 text-4xl">[]</div>
-                <p className="text-sm">生成完成后，预览会显示在这里</p>
+                <p className="text-sm">
+                  {status === "completed" ? "当前版本没有生成可用的页面预览" : "生成完成后，预览会显示在这里"}
+                </p>
               </div>
             ) : (
               <div
@@ -286,16 +288,12 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
                   maxHeight: "100%",
                 }}
               >
-                {previewHtml ? (
-                  <iframe
-                    title="generated-site-preview"
-                    srcDoc={previewHtml}
-                    sandbox="allow-scripts allow-forms"
-                    className="h-full w-full border-0 bg-white"
-                  />
-                ) : (
-                  <AppRenderer schema={schema} codeBundle={codeBundle} />
-                )}
+                <iframe
+                  title="generated-site-preview"
+                  srcDoc={previewHtml}
+                  sandbox="allow-scripts allow-forms"
+                  className="h-full w-full border-0 bg-white"
+                />
               </div>
             )}
           </div>

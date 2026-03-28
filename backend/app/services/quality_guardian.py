@@ -25,8 +25,6 @@ def run_quality_guardian(
     image_result = image_result or {}
     applied_repairs: list[str] = []
 
-    applied_repairs.extend(_repair_layout_archetypes(schema))
-
     if _should_append_cta_band(schema):
         _append_cta_band(schema)
         applied_repairs.append("已为首页补充收尾 CTA 区块，增强页面的转化闭环。")
@@ -92,18 +90,8 @@ def _build_quality_report(
         _build_check(
             "layout_signature",
             "布局骨架",
-            (
-                "warning"
-                if first_page_layout == "centered-auth"
-                and not any(token in app_type_text for token in {"auth", "login", "register", "signin", "signup"})
-                else "passed"
-            ),
-            (
-                "首页仍然收敛成居中认证页骨架；该需求更适合营销页、编辑型内容页、仪表盘或工作台布局。"
-                if first_page_layout == "centered-auth"
-                and not any(token in app_type_text for token in {"auth", "login", "register", "signin", "signup"})
-                else f"首页当前采用 {first_page_layout} 布局骨架。"
-            ),
+            "passed",
+            f"首页当前保持 {first_page_layout} 布局方向，质量守护不再强制收敛到固定骨架。",
         ),
         _build_check(
             "visual_hierarchy",
@@ -120,7 +108,7 @@ def _build_quality_report(
             "交互覆盖",
             "passed" if form_handlers or page_transitions else "warning",
             (
-                f"已生成 {len(form_handlers)} 个表单处理逻辑，以及 {len(page_transitions)} 个页面跳转逻辑。"
+                f"已生成 {len(form_handlers)} 个表单处理逻辑，并整理 {len(page_transitions)} 个关键交互流转。"
                 if form_handlers or page_transitions
                 else "当前版本没有生成明确的表单处理或页面跳转逻辑。"
             ),

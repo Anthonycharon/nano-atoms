@@ -4,7 +4,7 @@ import type { AppVersion } from "@/types/project";
 import { AGENT_META } from "@/types/agent";
 
 const INITIAL_AGENTS: AgentState[] = (
-  ["product", "design_director", "architect", "ui_builder", "code", "media", "qa"] as AgentName[]
+  ["product", "design_director", "media", "page_codegen", "qa"] as AgentName[]
 ).map((name) => ({
   name,
   label: AGENT_META[name].label,
@@ -23,9 +23,13 @@ interface WorkspaceState {
   setVersions: (versions: AppVersion[]) => void;
   setCurrentVersion: (versionId: number) => void;
   updateAgentStatus: (agent: AgentName, status: AgentStatus, summary?: string) => void;
+  setAgentSnapshots: (
+    agents: { agent_name: AgentName; status: AgentStatus; output_summary?: string | null }[]
+  ) => void;
   resetAgents: () => void;
   setGenerationStatus: (status: WorkspaceState["generationStatus"]) => void;
   addMessage: (role: "user" | "assistant", content: string) => void;
+  setMessages: (messages: { role: "user" | "assistant"; content: string; id: string }[]) => void;
   setPreviewDevice: (device: "desktop" | "mobile") => void;
 }
 
@@ -57,9 +61,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   updateAgentStatus: (agent, status, summary) =>
     set((state) => ({
-      agents: state.agents.map((item) =>
-        item.name === agent ? { ...item, status, summary } : item
-      ),
+      agents: state.agents.map((item) => (item.name === agent ? { ...item, status, summary } : item)),
+    })),
+
+  setAgentSnapshots: (snapshots) =>
+    set(() => ({
+      agents: INITIAL_AGENTS.map((item) => {
+        const snapshot = snapshots.find((candidate) => candidate.agent_name === item.name);
+        return snapshot
+          ? {
+              ...item,
+              status: snapshot.status,
+              summary: snapshot.output_summary ?? undefined,
+            }
+          : item;
+      }),
     })),
 
   resetAgents: () => set({ agents: INITIAL_AGENTS, generationStatus: "idle" }),
@@ -68,11 +84,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   addMessage: (role, content) =>
     set((state) => ({
-      messages: [
-        ...state.messages,
-        { role, content, id: `${Date.now()}-${Math.random()}` },
-      ],
+      messages: [...state.messages, { role, content, id: `${Date.now()}-${Math.random()}` }],
     })),
+
+  setMessages: (messages) => set({ messages }),
 
   setPreviewDevice: (previewDevice) => set({ previewDevice }),
 }));

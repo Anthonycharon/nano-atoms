@@ -1,9 +1,7 @@
 export type AgentName =
   | "product"
   | "design_director"
-  | "architect"
-  | "ui_builder"
-  | "code"
+  | "page_codegen"
   | "media"
   | "qa";
 
@@ -37,11 +35,9 @@ export const AGENT_META: Record<AgentName, { label: string; description: string 
   product: { label: "Product Agent", description: "需求理解与产品规格整理" },
   design_director: {
     label: "Design Director",
-    description: "视觉方向、页面节奏和首版质量约束",
+    description: "视觉方向、界面节奏和首版质量约束",
   },
-  architect: { label: "Architect Agent", description: "应用结构与页面区块设计" },
-  ui_builder: { label: "UI Builder", description: "视觉主题与界面表现细化" },
-  code: { label: "Code Agent", description: "交互逻辑与项目文件生成" },
+  page_codegen: { label: "应用生成引擎", description: "应用界面代码与预览生成" },
   media: { label: "Media Agent", description: "配图与视觉资源生成" },
-  qa: { label: "QA Agent", description: "一致性校验与自动修复检查" },
+  qa: { label: "QA Agent", description: "结果验收、一致性校验与质量守护" },
 };

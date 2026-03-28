@@ -12,7 +12,20 @@ from app.core.security import (
     verify_token,
 )
 from app.models import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    CaptchaResponse,
+    EmailVerificationResponse,
+    LoginRequest,
+    RegisterRequest,
+    SendRegisterCodeRequest,
+    TokenResponse,
+    UserResponse,
+)
+from app.services.captcha_service import create_captcha_challenge, validate_captcha_or_raise
+from app.services.email_verification_service import (
+    send_registration_code,
+    validate_registration_code_or_raise,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 bearer_scheme = HTTPBearer()
@@ -37,13 +50,26 @@ def get_current_user(
     return user
 
 
+@router.post("/register/send-code", response_model=EmailVerificationResponse)
+def send_register_code(body: SendRegisterCodeRequest, session: Annotated[Session, Depends(get_session)]):
+    payload = send_registration_code(session, str(body.email))
+    return EmailVerificationResponse(**payload)
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, session: Annotated[Session, Depends(get_session)]):
-    existing = session.exec(select(User).where(User.email == body.email)).first()
+    normalized_email = str(body.email).strip().lower()
+    validate_registration_code_or_raise(
+        session,
+        email=normalized_email,
+        verification_token=body.verification_token,
+        verification_code=body.verification_code,
+    )
+    existing = session.exec(select(User).where(User.email == normalized_email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user = User(email=body.email, password_hash=hash_password(body.password))
+    user = User(email=normalized_email, password_hash=hash_password(body.password))
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -54,7 +80,9 @@ def register(body: RegisterRequest, session: Annotated[Session, Depends(get_sess
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, session: Annotated[Session, Depends(get_session)]):
-    user = session.exec(select(User).where(User.email == body.email)).first()
+    normalized_email = str(body.email).strip().lower()
+    validate_captcha_or_raise(body.captcha_token, body.captcha_answer)
+    user = session.exec(select(User).where(User.email == normalized_email)).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -71,3 +99,8 @@ def logout():
 @router.get("/me", response_model=UserResponse)
 def me(current_user: Annotated[User, Depends(get_current_user)]):
     return UserResponse(id=current_user.id, email=current_user.email)
+
+
+@router.get("/captcha", response_model=CaptchaResponse)
+def get_captcha():
+    return CaptchaResponse(**create_captcha_challenge())

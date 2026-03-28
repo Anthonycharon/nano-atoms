@@ -7,6 +7,7 @@ from .app_version import AppVersion
 from .agent_run import AgentRun
 from .published_app import PublishedApp
 from .project_asset import ProjectAsset
+from .email_verification_code import EmailVerificationCode
 
 __all__ = [
     "User",
@@ -17,4 +18,5 @@ __all__ = [
     "AgentRun",
     "PublishedApp",
     "ProjectAsset",
+    "EmailVerificationCode",
 ]

@@ -67,10 +67,7 @@ async def run_product_agent(state: dict) -> dict:
         if not isinstance(prd_json, dict):
             raise ValueError("Product Agent expected a JSON object response")
         prd_json["content_language"] = str(prd_json.get("content_language") or content_language)
-        summary = (
-            f"Identified {len(prd_json.get('pages', []))} page(s), "
-            f"{len(prd_json.get('features', []))} feature(s)"
-        )
+        summary = f"已完成需求梳理，并提炼 {len(prd_json.get('features', []))} 个核心能力点"
         await notify_agent(cb, "product", "done", summary)
         return {**state, "prd_json": prd_json, "errors": state.get("errors", [])}
 

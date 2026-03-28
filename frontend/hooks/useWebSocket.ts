@@ -15,10 +15,12 @@ export function useWebSocket(projectId: number | null) {
   useEffect(() => {
     if (!projectId) return;
 
+    let active = true;
     const ws = new WebSocket(`${WS_BASE}/ws/projects/${projectId}/generation`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
+      if (!active) return;
       try {
         const msg: WsMessage = JSON.parse(event.data);
 
@@ -69,6 +71,7 @@ export function useWebSocket(projectId: number | null) {
     }, 30000);
 
     return () => {
+      active = false;
       clearInterval(pingInterval);
       ws.close();
     };

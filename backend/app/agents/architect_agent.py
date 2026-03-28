@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from copy import deepcopy
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-
-from app.core.config import settings
 
 from .utils import build_app_context, build_content_language_instruction, extract_json, make_llm, notify_agent
 
@@ -136,6 +133,36 @@ SUPPORTED_COMPONENT_TYPES = {
     "auth-card",
 }
 
+SINGLE_PAGE_MARKETING_KEYWORDS = {
+    "landing",
+    "launch",
+    "release",
+    "product launch",
+    "homepage",
+    "home page",
+    "single page",
+    "signup",
+    "sign up",
+    "register",
+    "countdown",
+    "hero",
+    "cta",
+    "feature",
+    "features",
+    "marketing",
+    "campaign",
+    "event page",
+    "发布页",
+    "产品发布",
+    "落地页",
+    "首页",
+    "单页",
+    "报名",
+    "倒计时",
+    "亮点",
+    "卖点",
+}
+
 
 def _is_chinese_language(language: object) -> bool:
     return str(language or "").strip().lower() == "zh-cn"
@@ -166,6 +193,18 @@ def _limit_unique_list(value: object, limit: int) -> list[Any]:
         if len(result) >= limit:
             break
     return result
+
+
+def _text_blob(values: list[object]) -> str:
+    parts: list[str] = []
+    for value in values:
+        if isinstance(value, list):
+            parts.extend(str(item or "") for item in value)
+        elif isinstance(value, dict):
+            parts.extend(str(item or "") for item in value.values())
+        else:
+            parts.append(str(value or ""))
+    return " ".join(parts).lower()
 
 
 def _compact_prd_payload(prd_json: dict[str, Any]) -> dict[str, Any]:
@@ -816,7 +855,7 @@ async def run_architect_agent(state: dict) -> dict:
             cb,
             "architect",
             "running",
-            f"Planned {len(planned_pages)} page(s); composing page schemas",
+            "已完成应用结构规划，正在准备生成上下文",
         )
 
         global_meta = {
@@ -824,48 +863,20 @@ async def run_architect_agent(state: dict) -> dict:
             "navigation": normalized_plan.get("navigation"),
             "content_language": normalized_plan.get("content_language"),
         }
-        composed_pages: list[dict[str, Any] | None] = [None] * len(planned_pages)
-        page_errors: list[str] = []
-        page_concurrency = max(1, min(settings.ARCHITECT_PAGE_CONCURRENCY, len(planned_pages) or 1))
-        semaphore = asyncio.Semaphore(page_concurrency)
-
-        async def compose_page_with_fallback(index: int, page_spec: dict[str, Any]) -> tuple[int, dict[str, Any], str | None]:
+        composed_pages: list[dict[str, Any]] = []
+        for index, page_spec in enumerate(planned_pages):
             fallback_page = dict(page_spec)
             fallback_page["_global"] = global_meta
+            composed_pages.append(_build_fallback_page(fallback_page, global_meta))
 
-            async with semaphore:
-                try:
-                    page_payload = await _compose_page(
-                        llm,
-                        app_context,
-                        normalized_plan,
-                        page_spec,
-                        compact_prd,
-                        design_brief if isinstance(design_brief, dict) else None,
-                    )
-                    return index, _normalize_page(page_payload, fallback_page, index), None
-                except Exception as exc:
-                    page_name = page_spec.get("name") or page_spec.get("id") or f"page-{index + 1}"
-                    return index, _build_fallback_page(fallback_page, global_meta), f"{page_name}: {exc}"
+        await notify_agent(
+            cb,
+            "architect",
+            "running",
+            "已完成应用结构与兼容数据准备",
+        )
 
-        tasks = [
-            asyncio.create_task(compose_page_with_fallback(index, page_spec))
-            for index, page_spec in enumerate(planned_pages)
-        ]
-
-        completed_pages = 0
-        for task in asyncio.as_completed(tasks):
-            index, page_payload, page_error = await task
-            composed_pages[index] = page_payload
-            if page_error:
-                page_errors.append(page_error)
-            completed_pages += 1
-            await notify_agent(
-                cb,
-                "architect",
-                "running",
-                f"Composed {completed_pages}/{len(planned_pages)} page(s)",
-            )
+        site_plan = deepcopy(normalized_plan)
 
         app_schema = {
             "app_id": normalized_plan.get("app_id"),
@@ -879,22 +890,23 @@ async def run_architect_agent(state: dict) -> dict:
         }
         synced_site_pages = _synchronize_site_shell(app_schema)
 
-        page_count = len(app_schema.get("pages", []))
         component_count = sum(
             len(page.get("components", []))
             for page in app_schema.get("pages", [])
             if isinstance(page, dict)
         )
-        fallback_count = len(plan_errors) + len(page_errors)
-        summary = f"Planned {page_count} page(s) and assembled {component_count} component(s)"
+        fallback_count = len(plan_errors)
+        summary = "已完成应用结构规划并准备代码生成上下文"
+        if component_count:
+            summary += f"; 兼容数据中包含 {component_count} 个结构区块"
         if fallback_count:
-            summary += f"; used {fallback_count} fallback step(s)"
+            summary += f"; 使用了 {fallback_count} 次兜底处理"
         if synced_site_pages:
-            summary += f"; synchronized shared site navigation on {synced_site_pages} page(s)"
+            summary += "; 已同步共享导航结构"
 
-        next_state = {**state, "app_schema": app_schema}
-        if plan_errors or page_errors:
-            next_state["errors"] = state.get("errors", []) + plan_errors + page_errors
+        next_state = {**state, "site_plan": site_plan, "app_schema": app_schema}
+        if plan_errors:
+            next_state["errors"] = state.get("errors", []) + plan_errors
 
         await notify_agent(cb, "architect", "done", summary)
         return next_state

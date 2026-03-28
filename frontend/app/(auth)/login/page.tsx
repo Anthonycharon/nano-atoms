@@ -1,12 +1,15 @@
 "use client";
 
+import axios from "axios";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import LoginMascotCat from "@/components/auth/LoginMascotCat";
+import AuthCaptchaField from "@/components/auth/AuthCaptchaField";
+import AuthMascotCats from "@/components/auth/AuthMascotCats";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import AtomBrandMark from "@/components/ui/AtomBrandMark";
 import { useAuth } from "@/hooks/useAuth";
+import { authApi } from "@/lib/api";
 import {
   appendStarterParams,
   getStarterIntentFromSearchParams,
@@ -24,22 +27,44 @@ function LoginForm() {
   const toggleTheme = useThemeStore((state) => state.toggleTheme);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaSvg, setCaptchaSvg] = useState<string | null>(null);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const isCyber = theme === "cyber";
 
+  const starterIntent = getStarterIntentFromSearchParams(searchParams);
+  const registerHref = starterIntent ? appendStarterParams("/register", starterIntent) : "/register";
+
+  const refreshCaptcha = async () => {
+    setCaptchaLoading(true);
+    try {
+      const { data } = await authApi.captcha();
+      setCaptchaToken(data.captcha_token);
+      setCaptchaSvg(data.svg_data_url);
+      setCaptchaAnswer("");
+    } catch {
+      setError("验证码加载失败，请稍后重试");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!hasHydrated) return;
-    if (isAuthenticated) router.replace("/dashboard");
+    if (isAuthenticated) {
+      router.replace("/dashboard");
+      return;
+    }
+    void refreshCaptcha();
   }, [hasHydrated, isAuthenticated, router]);
 
   if (!hasHydrated) {
     return <div className="min-h-screen bg-slate-50" />;
   }
-
-  const starterIntent = getStarterIntentFromSearchParams(searchParams);
-  const registerHref = starterIntent ? appendStarterParams("/register", starterIntent) : "/register";
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,9 +75,14 @@ function LoginForm() {
       if (starterIntent) {
         persistStarterIntent(starterIntent);
       }
-      await login(email, password);
-    } catch {
-      setError("邮箱或密码错误");
+      await login(email, password, captchaToken, captchaAnswer);
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.detail === "Invalid captcha") {
+        setError("验证码错误，请重新输入");
+        await refreshCaptcha();
+      } else {
+        setError("邮箱或密码错误");
+      }
     } finally {
       setLoading(false);
     }
@@ -103,9 +133,7 @@ function LoginForm() {
             <Link href="/" className="relative inline-flex items-center gap-3">
               <span
                 className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
-                  isCyber
-                    ? "border-cyan-400/20 bg-slate-900/80"
-                    : "border-slate-200 bg-white"
+                  isCyber ? "border-cyan-400/20 bg-slate-900/80" : "border-slate-200 bg-white"
                 }`}
               >
                 <AtomBrandMark className="h-9 w-9" />
@@ -115,7 +143,7 @@ function LoginForm() {
                   Nano Atoms
                 </span>
                 <span className={`block text-sm ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
-                  AI 网站生成工作台
+                  AI 应用生成工作台
                 </span>
               </span>
             </Link>
@@ -127,28 +155,26 @@ function LoginForm() {
                   : "border-slate-200 bg-white/70 text-slate-600"
               }`}
             >
-              完整网站生成
+              完整应用生成
             </div>
 
             <h1 className={`relative mt-5 max-w-2xl text-4xl font-black leading-tight md:text-5xl ${isCyber ? "text-white" : "text-slate-900"}`}>
-              登录后继续生成、修改并发布你的网站。
+              登录后继续生成、修改并发布你的应用。
             </h1>
             <p className={`relative mt-4 max-w-2xl text-sm leading-7 md:text-base ${isCyber ? "text-slate-300" : "text-slate-600"}`}>
-              一句话生成完整网站，多页面共享导航、统一视觉和交互流程，后续还可以继续迭代文案、结构与样式。
+              一句话生成完整应用，统一视觉与交互流程，后续还可以继续迭代文案、结构与样式。
             </p>
 
             <div className="relative mt-8 grid gap-3 sm:grid-cols-3">
               {[
-                ["完整结构", "不是单页草图，而是连贯的网站信息架构"],
+                ["完整结构", "不是单页草图，而是连续的应用信息架构"],
                 ["持续迭代", "继续对话就能改布局、文案和视觉"],
                 ["快速发布", "预览、代码和发布流程保持连贯"],
               ].map(([title, description]) => (
                 <div
                   key={title}
                   className={`rounded-2xl border p-4 ${
-                    isCyber
-                      ? "border-cyan-400/12 bg-slate-900/72"
-                      : "border-slate-200 bg-white/80"
+                    isCyber ? "border-cyan-400/12 bg-slate-900/72" : "border-slate-200 bg-white/80"
                   }`}
                 >
                   <div className={`text-sm font-semibold ${isCyber ? "text-white" : "text-slate-900"}`}>
@@ -161,7 +187,7 @@ function LoginForm() {
               ))}
             </div>
 
-            <LoginMascotCat passwordFocused={passwordFocused} isCyber={isCyber} className="relative mt-8 md:mt-10" />
+            <AuthMascotCats passwordFocused={passwordFocused} isCyber={isCyber} className="relative mt-8 md:mt-10" />
           </section>
 
           <section
@@ -172,11 +198,9 @@ function LoginForm() {
             }`}
           >
             <div className="mb-8">
-              <h2 className={`text-2xl font-bold ${isCyber ? "text-white" : "text-slate-900"}`}>
-                欢迎回来
-              </h2>
+              <h2 className={`text-2xl font-bold ${isCyber ? "text-white" : "text-slate-900"}`}>欢迎回来</h2>
               <p className={`mt-2 text-sm leading-7 ${isCyber ? "text-slate-400" : "text-slate-500"}`}>
-                登录你的工作区，继续推进正在生成的网站与应用。
+                登录你的工作区，继续推进正在生成的应用。
               </p>
             </div>
 
@@ -184,9 +208,7 @@ function LoginForm() {
               {error && (
                 <div
                   className={`rounded-2xl border px-4 py-3 text-sm ${
-                    isCyber
-                      ? "border-rose-400/30 bg-rose-400/10 text-rose-200"
-                      : "border-red-200 bg-red-50 text-red-600"
+                    isCyber ? "border-rose-400/30 bg-rose-400/10 text-rose-200" : "border-red-200 bg-red-50 text-red-600"
                   }`}
                 >
                   {error}
@@ -194,9 +216,7 @@ function LoginForm() {
               )}
 
               <div>
-                <label className={`mb-1.5 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>
-                  邮箱
-                </label>
+                <label className={`mb-1.5 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>邮箱</label>
                 <input
                   type="email"
                   value={email}
@@ -212,9 +232,7 @@ function LoginForm() {
               </div>
 
               <div>
-                <label className={`mb-1.5 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>
-                  密码
-                </label>
+                <label className={`mb-1.5 block text-sm ${isCyber ? "text-slate-300" : "text-slate-600"}`}>密码</label>
                 <input
                   type="password"
                   value={password}
@@ -231,9 +249,18 @@ function LoginForm() {
                 />
               </div>
 
+              <AuthCaptchaField
+                value={captchaAnswer}
+                onChange={setCaptchaAnswer}
+                captchaSvg={captchaSvg}
+                loading={captchaLoading || loading}
+                isCyber={isCyber}
+                onRefresh={() => void refreshCaptcha()}
+              />
+
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !captchaToken}
                 className={`mt-2 w-full rounded-2xl py-3 text-sm font-semibold transition-all disabled:opacity-50 ${
                   isCyber
                     ? "bg-cyan-400 text-slate-950 shadow-[0_0_26px_rgba(34,211,238,0.24)] hover:bg-cyan-300"

@@ -1,3 +1,5 @@
+import type { AgentName, AgentStatus } from "@/types/agent";
+
 export interface User {
   id: number;
   email: string;
@@ -22,6 +24,24 @@ export interface AppVersion {
   schema_json: string | null;
   code_json: string | null;
   created_at: string;
+}
+
+export interface ConversationMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  agent_name: string | null;
+  created_at: string;
+}
+
+export interface AgentRunSnapshot {
+  agent_name: AgentName;
+  status: AgentStatus;
+  output_summary: string | null;
+}
+
+export interface VersionDetail extends AppVersion {
+  agent_runs: AgentRunSnapshot[];
 }
 
 export interface ProjectAsset {

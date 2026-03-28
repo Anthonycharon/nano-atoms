@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 import re
 from html import escape
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+from app.agents.utils import extract_json
+
+# Nano UI 组件库路径
+NANO_UI_PATH = Path(__file__).parent.parent / "assets" / "nano-ui.js"
 
 
 SUPPORTED_LAYOUTS = {"marketing", "editorial", "dashboard", "centered-auth", "workspace", "immersive"}
@@ -28,6 +34,97 @@ def _json_text(data: Any) -> str:
 
 def _json_script(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+def _extract_json_string_field(raw: str, field_name: str) -> str | None:
+    field_match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"', raw)
+    if not field_match:
+        return None
+
+    start = field_match.end() - 1
+    try:
+        value, _ = json.JSONDecoder().raw_decode(raw[start:])
+    except Exception:
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _extract_escaped_body_html_field(raw: str) -> str | None:
+    match = re.search(r'"body_html"\s*:\s*"(<main[\s\S]*?<\\\/main>)"', raw)
+    if not match:
+        return None
+    literal = f'"{match.group(1)}"'
+    try:
+        value = json.loads(literal)
+    except Exception:
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _extract_escaped_main_fragment(raw: str) -> str | None:
+    escaped_end = raw.rfind("<\\/main>")
+    if escaped_end != -1:
+        start = raw.rfind("<main", 0, escaped_end)
+        if start == -1 or escaped_end <= start:
+            return None
+        fragment = raw[start : escaped_end + len("<\\/main>")]
+    else:
+        start = raw.find("<main")
+        end = raw.rfind("</main>")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        fragment = raw[start : end + len("</main>")]
+    return (
+        fragment.replace('\\"', '"')
+        .replace("\\n", "\n")
+        .replace("\\t", "\t")
+        .replace("\\/", "/")
+        .strip()
+    )
+
+
+def _sanitize_freeform_markup(raw_text: Any) -> str:
+    raw = str(raw_text or "").strip()
+    if not raw:
+        return ""
+
+    if "\"body_html\"" in raw or raw.lstrip().startswith("{") or raw.lstrip().startswith("```json"):
+        escaped_body = _extract_escaped_body_html_field(raw)
+        if escaped_body and escaped_body != raw:
+            return _sanitize_freeform_markup(escaped_body)
+        try:
+            payload = extract_json(raw)
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            nested_body = str(payload.get("body_html") or "").strip()
+            if nested_body and nested_body != raw:
+                return _sanitize_freeform_markup(nested_body)
+        escaped_fragment = _extract_escaped_main_fragment(raw)
+        if escaped_fragment and escaped_fragment != raw:
+            return _sanitize_freeform_markup(escaped_fragment)
+        literal_body = _extract_json_string_field(raw, "body_html")
+        if literal_body and literal_body != raw and "</" in literal_body:
+            return _sanitize_freeform_markup(literal_body)
+
+    for pattern in (
+        r"```html\s*([\s\S]*?)```",
+        r"```json\s*([\s\S]*?)```",
+    ):
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip()
+            if candidate != raw:
+                return _sanitize_freeform_markup(candidate)
+
+    main_match = re.search(r"(<main[\s\S]*?</main>)", raw, re.IGNORECASE)
+    if main_match:
+        return main_match.group(1).strip()
+
+    if any(tag in raw for tag in ("<section", "<div", "<article")):
+        return f'<main class="na-page na-freeform-shell">{raw}</main>'
+
+    return raw
 
 
 def _escape_text(value: Any) -> str:
@@ -787,7 +884,7 @@ def _build_runtime_js() -> str:
 })();"""
 
 
-def _build_schema_js(app_schema: dict[str, Any], code_bundle: dict[str, Any], site_data: dict[str, Any]) -> str:
+def _build_metadata_js(app_schema: dict[str, Any], code_bundle: dict[str, Any], site_data: dict[str, Any]) -> str:
     site_meta = {
         "title": site_data.get("title"),
         "default_route": site_data.get("default_route"),
@@ -803,8 +900,18 @@ def _build_schema_js(app_schema: dict[str, Any], code_bundle: dict[str, Any], si
             if isinstance(page, dict)
         ],
     }
+    generation_metadata = {
+        "app_id": app_schema.get("app_id"),
+        "title": app_schema.get("title"),
+        "app_type": app_schema.get("app_type"),
+        "content_language": app_schema.get("content_language"),
+        "layout_archetype": app_schema.get("layout_archetype"),
+        "navigation": app_schema.get("navigation"),
+        "design_brief": app_schema.get("design_brief"),
+        "ui_theme": app_schema.get("ui_theme"),
+    }
     return (
-        f"export const appSchema = {_json_text(app_schema)};\\n\\n"
+        f"export const generationMetadata = {_json_text(generation_metadata)};\\n\\n"
         f"export const codeBundle = {_json_text(code_bundle)};\\n\\n"
         f"export const siteMeta = {_json_text(site_meta)};\\n"
     )
@@ -885,6 +992,24 @@ def _build_index_html(
     )
 
 
+def _load_nano_ui() -> str:
+    """Load Nano UI component library."""
+    try:
+        return NANO_UI_PATH.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+def _build_import_map() -> str:
+    """Build import map for CDN dependencies."""
+    return """{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3.4.21/dist/vue.esm-browser.js",
+    "tailwindcss": "https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/lib/index.js"
+  }
+}"""
+
+
 def _build_preview_html(
     title: str,
     language: str,
@@ -903,6 +1028,9 @@ def _build_preview_html(
         "submit_message": _localized(language, "提交成功", "Submitted successfully"),
         "empty_message": _localized(language, "当前没有可渲染页面", "No renderable page"),
     }
+    nano_ui_js = _load_nano_ui()
+    import_map = _build_import_map()
+
     return f"""<!doctype html>
 <html lang="{_escape_attr(language)}">
   <head>
@@ -910,10 +1038,16 @@ def _build_preview_html(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{_escape_text(title)}</title>
     <style>{styles_css}</style>
+    <script type="importmap">{import_map}</script>
   </head>
   <body>
     <div id="na-preview-root" class="na-preview-shell"></div>
     <script id="na-site-data" type="application/json">{_json_script(preview_payload)}</script>
+    <script>{nano_ui_js}</script>
+    <script type="module">
+      // Expose NanoUI globally
+      window.NanoUI = window.NanoUI || {{}};
+    </script>
     <script>{runtime_js}</script>
   </body>
 </html>
@@ -936,8 +1070,8 @@ This folder is a static multi-page export generated by Nano Atoms.
 - `pages/*.html`: additional generated pages
 - `src/styles.css`: shared site styling
 - `src/app.js`: lightweight runtime for navigation and form feedback
-- `src/schema.js`: exported planning schema and interaction bundle
-- `data/app-schema.json`: raw generated schema
+- `src/metadata.js`: exported generation metadata and interaction bundle
+- `data/generation-metadata.json`: persisted generation metadata snapshot
 - `data/code-bundle.json`: bindings and transitions
 - `data/site-pages.json`: pre-rendered page snapshots used by preview mode
 
@@ -949,6 +1083,25 @@ This folder is a static multi-page export generated by Nano Atoms.
 
 {prompt}
 """
+
+
+def _build_freeform_pending_markup(title: str, page_name: str, language: str) -> str:
+    eyebrow = _localized(language, "应用内容仍在完善中", "Application content is still being completed")
+    heading = page_name.strip() or title.strip() or _localized(language, "页面", "Page")
+    description = _localized(
+        language,
+        "当前版本暂未完成可预览内容生成。请稍后刷新，或继续发起一次迭代。",
+        "This page has not finished generating yet. Refresh later or run another iteration to fill it in.",
+    )
+    return (
+        '<main class="na-page na-freeform-shell">'
+        '<section class="na-section na-panel">'
+        f'<p class="na-eyebrow">{_escape_text(eyebrow)}</p>'
+        f'<h1 class="na-heading">{_escape_text(heading)}</h1>'
+        f'<p class="na-text">{_escape_text(description)}</p>'
+        "</section>"
+        "</main>"
+    )
 
 
 def build_project_artifact(
@@ -973,6 +1126,8 @@ def build_project_artifact(
             continue
         route = _nav_target(str(item.get("route") or "/"))
         freeform_pages[route] = item
+    if not freeform_pages:
+        raise ValueError("No generated page code was provided for export")
     if freeform_css:
         styles_css = f"{styles_css}\n\n/* Freeform site codegen overrides */\n{freeform_css}\n"
     if freeform_runtime:
@@ -983,13 +1138,14 @@ def build_project_artifact(
 
     rendered_pages: list[dict[str, Any]] = []
     route_map: dict[str, str] = {}
-
     for index, page in enumerate(page for page in pages if isinstance(page, dict)):
         route = _nav_target(str(page.get("route") or "/"))
         file_path = "index.html" if route == "/" else f"pages/{_page_file_name(route, index)}"
         route_map[route] = file_path
         freeform_page = freeform_pages.get(route) or {}
-        rendered_html = str(freeform_page.get("body_html") or "").strip() or _render_page_markup(app_schema, page)
+        rendered_html = _sanitize_freeform_markup(freeform_page.get("body_html") or "").strip()
+        if not rendered_html:
+            raise ValueError(f"Missing generated page body for route {route}")
         rendered_pages.append(
             {
                 "id": str(page.get("id") or f"page-{index + 1}"),
@@ -1002,17 +1158,7 @@ def build_project_artifact(
         )
 
     if not rendered_pages:
-        rendered_pages.append(
-            {
-                "id": "home",
-                "name": _localized(language, "首页", "Home"),
-                "route": "/",
-                "path": "index.html",
-                "layout": _infer_layout_archetype(app_schema),
-                "html": f'<main class="na-page"><section class="na-section na-panel"><h1 class="na-heading">{_escape_text(title)}</h1><p class="na-text">{_escape_text(_localized(language, "当前没有可渲染页面。", "No renderable page."))}</p></section></main>',
-            }
-        )
-        route_map["/"] = "index.html"
+        raise ValueError("No generated pages were rendered for export")
 
     default_route = rendered_pages[0]["route"]
     site_data = {
@@ -1028,11 +1174,22 @@ def build_project_artifact(
         {"path": "src/styles.css", "language": "css", "content": styles_css},
         {"path": "src/app.js", "language": "javascript", "content": runtime_js},
         {
-            "path": "src/schema.js",
+            "path": "src/metadata.js",
             "language": "javascript",
-            "content": _build_schema_js(app_schema, code_bundle, site_data),
+            "content": _build_metadata_js(app_schema, code_bundle, site_data),
         },
-        {"path": "data/app-schema.json", "language": "json", "content": _json_text(app_schema)},
+        {"path": "data/generation-metadata.json", "language": "json", "content": _json_text({
+            "app_id": app_schema.get("app_id"),
+            "title": app_schema.get("title"),
+            "app_type": app_schema.get("app_type"),
+            "content_language": app_schema.get("content_language"),
+            "layout_archetype": app_schema.get("layout_archetype"),
+            "navigation": app_schema.get("navigation"),
+            "design_brief": app_schema.get("design_brief"),
+            "site_plan": app_schema.get("site_plan"),
+            "ui_theme": app_schema.get("ui_theme"),
+            "quality_report": app_schema.get("quality_report"),
+        })},
         {"path": "data/code-bundle.json", "language": "json", "content": _json_text(code_bundle)},
         {"path": "data/site-pages.json", "language": "json", "content": _json_text(site_data)},
     ]
