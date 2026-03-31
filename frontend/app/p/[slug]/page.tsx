@@ -130,7 +130,7 @@ export default function PublicAppPageClient({ params }: Props) {
           <iframe
             title="published-app-preview"
             srcDoc={previewHtml}
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-forms allow-same-origin"
             className="min-h-[calc(100vh-56px)] w-full border-0 bg-white"
           />
         ) : (

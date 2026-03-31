@@ -519,6 +519,39 @@ def _normalize_body_html(raw_text: str) -> str | None:
     return None
 
 
+def _normalize_enhancement_js(raw_text: str) -> str:
+    raw = str(raw_text or "").strip()
+    if not raw:
+        return ""
+
+    for pattern in (
+        r"```javascript\s*([\s\S]*?)```",
+        r"```js\s*([\s\S]*?)```",
+        r"```\s*([\s\S]*?)```",
+    ):
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match:
+            raw = match.group(1).strip()
+            break
+
+    placeholder_markers = (
+        "游戏逻辑...",
+        "logic here",
+        "your code here",
+        "TODO",
+        "待补充",
+        "...",
+    )
+    compact = raw.replace("\r", "").replace("\n", " ").strip()
+    if any(marker == compact or compact.endswith(marker) for marker in placeholder_markers):
+        return ""
+
+    if compact.lower() in {"javascript", "js", "<script></script>"}:
+        return ""
+
+    return raw
+
+
 def _extract_page_title(body_html: str, fallback: str) -> str:
     heading_match = re.search(r"<h1[^>]*>(.*?)</h1>", body_html, re.IGNORECASE | re.DOTALL)
     if not heading_match:
@@ -790,9 +823,9 @@ async def generate_freeform_site_pack(
 
     style_brief = str(style_pack.get("style_brief") or "").strip()
     global_css = str(style_pack.get("global_css") or "").strip()
-    enhancement_js = str(
+    enhancement_js = _normalize_enhancement_js(
         style_pack.get("enhancement_js") or style_pack.get("runtime_js") or ""
-    ).strip()
+    )
     navigation = _top_level_navigation(app_schema, site_plan)
     semaphore = asyncio.Semaphore(max(1, settings.SITE_CODEGEN_PAGE_CONCURRENCY))
 

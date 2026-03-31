@@ -291,7 +291,7 @@ export default function PreviewPanel({ schemaJson, codeJson, status }: Props) {
                 <iframe
                   title="generated-site-preview"
                   srcDoc={previewHtml}
-                  sandbox="allow-scripts allow-forms"
+                  sandbox="allow-scripts allow-forms allow-same-origin"
                   className="h-full w-full border-0 bg-white"
                 />
               </div>

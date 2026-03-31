@@ -859,6 +859,17 @@ def _build_runtime_js() -> str:
     });
   }
 
+  function executeInlineScripts(scope) {
+    scope.querySelectorAll("script").forEach((oldScript) => {
+      const nextScript = document.createElement("script");
+      for (const attr of oldScript.attributes) {
+        nextScript.setAttribute(attr.name, attr.value);
+      }
+      nextScript.textContent = oldScript.textContent || "";
+      oldScript.replaceWith(nextScript);
+    });
+  }
+
   function renderPreview() {
     if (!previewRoot) return;
     const page = pages.find((item) => item.route === currentRoute) || pages[0];
@@ -869,6 +880,7 @@ def _build_runtime_js() -> str:
     document.title = `${siteData.title || "Nano Atoms"} - ${page.name || page.route}`;
     previewRoot.innerHTML = `<div class="na-site-shell">${page.html || ""}</div>`;
     bindInteractions(previewRoot);
+    executeInlineScripts(previewRoot);
   }
 
   if (siteData.preview) {
