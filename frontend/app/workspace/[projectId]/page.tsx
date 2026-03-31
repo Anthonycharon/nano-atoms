@@ -26,6 +26,15 @@ const SCOPE_LABELS: Record<string, string> = {
   style: "视觉风格",
 };
 
+const GREETING_RESPONSE =
+  "你好，我是 Nano Atoms。这里可以根据你的描述生成完整应用，并继续迭代页面、交互与视觉效果。你可以直接告诉我想做什么应用、面向谁、希望包含哪些功能，以及偏好的风格。";
+
+function isGreetingPrompt(prompt: string) {
+  return /^(?:hi|hello|hey|hi there|hello there|你好|您好|哈喽|嗨|在吗|在不在|hello nano|nano atoms)[\s!！,，.。?？~～]*$/i.test(
+    prompt.trim()
+  );
+}
+
 export default function WorkspacePage({ params }: Props) {
   const { projectId: projectIdStr } = use(params);
   const projectId = Number(projectIdStr);
@@ -239,6 +248,12 @@ export default function WorkspacePage({ params }: Props) {
     const isFirst = versions.length === 0;
     const scope = !isFirst && options?.scope ? options.scope : "full";
     const scopeLabel = SCOPE_LABELS[scope] ?? "整体";
+
+    if (isGreetingPrompt(prompt)) {
+      addMessage("user", prompt);
+      addMessage("assistant", GREETING_RESPONSE);
+      return;
+    }
 
     addMessage("user", scope !== "full" ? `【${scopeLabel}】${prompt}` : prompt);
     addMessage(

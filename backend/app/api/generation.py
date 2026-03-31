@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -17,6 +18,24 @@ from app.services.iteration_context import build_iteration_prompt
 from app.services.version_recovery import reconcile_project_versions
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
+
+GREETING_RESPONSE = (
+    "你好，我是 Nano Atoms。这里可以根据你的描述生成完整应用，并继续迭代页面、交互与视觉效果。"
+    " 你可以直接告诉我想做什么应用、面向谁、希望包含哪些功能，以及你偏好的风格。"
+)
+
+_GREETING_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"hi|hello|hey|hi there|hello there|"
+    r"你好|您好|哈喽|嗨|在吗|在不在|hello nano|nano atoms"
+    r")"
+    r"[\s!！,，.。?？~～]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_greeting_prompt(prompt: str) -> bool:
+    return bool(_GREETING_PATTERN.fullmatch((prompt or "").strip()))
 
 
 def _version_to_response(version: AppVersion) -> VersionResponse:
@@ -40,6 +59,9 @@ async def generate(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ):
+    if _is_greeting_prompt(body.prompt):
+        return {"message": GREETING_RESPONSE, "mode": "greeting", "skipped": True}
+
     project = session.get(Project, project_id)
     if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -122,6 +144,9 @@ async def iterate(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ):
+    if _is_greeting_prompt(body.prompt):
+        return {"message": GREETING_RESPONSE, "mode": "greeting", "skipped": True}
+
     project = session.get(Project, project_id)
     if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
